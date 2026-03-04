@@ -1,0 +1,500 @@
+
+;
+ try = ligscr: chksum = colscr ; variables inutilisees a ce moment
+;
+;
+menu .asc "1-Transmettre":.byte 13,13
+     .asc "2-Recevoir":.byte 13,13
+     .asc "3-Terminer communications":.byte 0
+;
+modeminit = *
+     .asc "atv0":.byte 13
+     .asc "atx0":.byte 13
+     .asc "ats7=90":.byte 13
+     .asc "ats0=4":.byte 13
+     .asc "ate0":.byte 13,0
+;
+mdtmes .asc " Un instant S.V.P. ":.byte 0
+;
+modemdetect jsr normal:sta modemp:sta maitre:sta xpos
+     jsr rsopen:bcs rsclose:ldy #11:sty ypos:ldy #0
+mdtmes1 lda mdtmes,y:beq mdtmes2
+     jsr pascii:iny:bne mdtmes1
+mdtmes2 lda #3:sta try
+
+mdt0 dec try:bmi mdt5
+     lda #90:sec:jsr atsend ; atz
+mdt1 jsr getrs:bcs mdt0
+     cmp #79:bne mdt1
+mdt2 jsr getrs:bcs mdt0
+     cmp #75:bne mdt2
+;
+     ldy #0
+mdta lda #10:sta try:sty chksum
+mdtb dec try:bmi mdt5:ldy chksum
+mdt3 lda modeminit,y:beq mdt4:iny
+     jsr putrs:cmp #13:bne mdt3
+mdtc jsr r13x13:bcs mdtb:bne mdtb:beq mdta
+mdt4 lda #1:sta modemp:jsr masterfichier
+mdt5 ldy #11:jsr efligney
+;
+;
+; fermer chanel rs232
+;
+rsclose jsr $ffcc:lda #2:jsr $ffc3
+     lda ddrb:and #%10010111:ora #%100:sta ddrb:rts
+;
+;
+; lire code d'erreur du modem... cr,code,cr
+;
+r13x13 jsr getrs:bcs r13r
+     cmp #13:bne r13x13
+rx13 jsr getrs:bcs r13r
+rx14 sta acc:jsr getrs:bcs r13r
+     cmp #13:bne rx14:lda acc:sec:sbc #48:clc
+r13r rts
+;
+;
+; ouvrir rs232
+;
+rsopen jsr rsclose:ldx #$c6:stx $f8:inx:stx $fa ; buffer $c600, $c700
+     lda #2:tax:tay:jsr $ffba:inx ; setlf
+     lda #4:ldx #<rsfn:ldy #>rsfn:jsr $ffbd
+     jsr $ffc0:bcs rsi1
+     lda ddrb:and #%10010111:ora #%100:sta ddrb
+;
+;
+; mettre rs232 comme device i/o
+;
+rsio jsr $ffcc:ldx #2:jsr $ffc9:bcs rsi1
+     ldx #2:jsr $ffc6:bcs rsi1:jsr $ffe4:clc
+rsi1 rts
+rsfn .byte 0,0,62,1 ; 1195 bauds
+;
+;
+; flusher buffer rs232
+;
+rsflush jsr getrs:bcc rsflush:rts
+;
+;
+; imprimmer la page et effacer ligne 0
+;
+ppagev jsr ppage:ldy #0:jmp efligney
+;
+;
+; communication etablie a la main...
+;
+ctz9 lda #66:jsr putrs:jsr putrs ; quitter si pas de mot de passe
+ctz0 jmp ctzq
+ctz  lda modemp:bne ctz1:rts
+ctz1 jsr to:jsr rsopen:bcs ctz0
+ctz2 lda #68:clc:jsr atsend ; atd
+ctz3 jsr get:jsr putrs:cmp #13:bne ctz3
+ctz4 ldx 197:cpx #64:bne ctz9
+     lda prb:and #$10:beq ctz4a ; carrier detect
+     jsr getrs:cmp #49:beq ctz4a
+     cmp #51:beq ctz0:bne ctz4
+ctz4a jsr callerpass:bcs ctzq:jsr to
+ctz4b jsr $ffcc
+     jsr clr2:jsr ppagev:lda #3:sta ypos:ldy #0
+ctz5 ldx #3:stx xpos
+ctz6 lda menu,y:beq ctz8:iny
+     cmp #13:bne ctz7:inc ypos:bne ctz5
+ctz7 jsr pascii:jmp ctz6
+ctz8 lda prb:and #16:bne ctzq:jsr pheure
+     jsr $ffe4:cmp #49:beq ctztrans
+     cmp #50:beq ctzreceve:cmp #51:bne ctz8
+ctzq jsr ppagev
+     jsr raccroche:lda #0:sta pno
+     jsr rsclose:jmp rpnoppage
+;
+ctztrans jsr ppagev
+     ldx #xtrans:jsr trchk:bcs ctz4b
+     jsr trheure
+ctjtr1 lda misa:jsr sendpage:bcs ctz4b
+     inc misa:lda misa:cmp misb:bcc ctjtr1:bcs ctz4b
+;
+ctzreceve jsr ppagev:ldx #xrecev:jsr trchk:bcs ctz4b
+ctzr1 lda misa:jsr recevepage:bcs ctz4b
+     inc misa:lda misa:cmp misb:bcc ctzr1:jmp ctz4b
+;
+trchk stx comm:jsr input
+     jsr nombreb:bcs trchk1:cmp toppage:bcs trchk1
+     sta misa:jsr nombreb:bcs trchk1:cmp toppage
+     bcs trchk1:cmp misa:bcc trchk1
+     sta misb:inc misb:jmp rsio
+trchk1 sec:rts
+;
+; raccrocher le modem
+;
+raccroche lda #5:sta try
+rac0 dec try:bmi rac2
+     jsr rsopen:ldx #1:jsr pause
+     lda #43:jsr putrs:jsr putrs:jsr putrs
+     ldx #1:jsr pause:lda #72:sec:jsr atsend
+rac1 jsr getrs:bcs rac0
+     cmp #48:bne rac1:rts
+rac2 jsr modemdetect
+     lda modemp:bne raccroche:rts
+;
+;
+; envoyer "at" puis le registre a au modem puis return
+;
+atsend php:pha:ldx #1:jsr pause
+     lda #65:jsr putrs:lda #84:jsr putrs
+     pla:jsr putrs:plp:bcc trchk1+1
+     lda #13:jmp putrs
+;
+;
+; faire une pose de x secondes sans changer les registes a et y
+;
+pause pha:tya:pha:stx pr1
+     txa:asl:lsr pr1:clc:adc pr1 ; *2.5
+     ldx #0:ldy #0
+pau1 dex:bne pau1:dey:bne pau1
+     sec:sbc #1:bne pau1:pla:tay:pla:rts
+;
+;
+; recevoir octet sur rs232 c=1 => timout
+;
+getrs tya:pha:lda #0:sta pr1:lda #60:sta pr1+1
+rsg1 jsr $ffe4:tax:jsr $ffb7:and #8:bne rsg2
+     pla:tay:txa:clc:rts
+rsg2 dec pr1:bne rsg1:dec pr1+1:bne rsg1
+pla:tay:sec:rts ; timout
+;
+;
+; envoyer un octet sur rs232 avec petit delais
+;
+putrs pha:txa:pha:tya:pha
+     tsx:lda $103,x:jsr $ffd2
+     ldx #0:ldy #5:sei
+prs1 dex:bne prs1:dey:bne prs1
+     cli:pla:tay:pla:tax:pla:clc:rts
+;
+;
+; envoyer la page misa
+;
+sendpage lda #5:sta try ; nombre d'essaies
+spg0 lda #0:jsr rscommande:bcs spg9
+     jsr senddata:bcs spg9
+     jsr inchksum:bcc spg7+1
+spg9 dec try:bpl spg0
+spg7 sec:rts
+;
+senddata lda $5b0:pha:lda misa:sta pno:jsr xpno
+     ldy #0:sty chksum
+     lda $5af:eor #$ff:sta $5b0 ; forcer l'arret a la fin
+     jsr rctm
+     and #%01000000:bne spg1
+     jsr chksend:jsr chksend:jmp spgsum
+spg1 jsr from:lda #4:sta source+1:lda #0:sta source
+spg2 ldy #0:lda (source),y
+spg3 iny:cmp (source),y:bne spg4:cpy #255:bcc spg3
+spg4 cpy #4:bcs spg5:cmp #$d9:beq spg5
+     ldy #1:bne spg6
+spg5 pha:lda #$d9:jsr chksend
+     tya:jsr chksend:pla
+spg6 jsr chksend:tya:clc:adc source
+     sta source:bcc spg6b:inc source+1
+spg6b lda source+1:cmp #5:bcc spg2:bne spgsum
+     lda source:cmp #$b0:bcc spg2
+spgsum pla:sta $5b0:clc:rts
+;
+chksend jsr putrs:clc:adc chksum:sta chksum:rts
+;
+;
+; demander la page misa
+;
+recevepage lda #5:sta try ; nombre d'essaies
+rpg0 lda #1:jsr rscommande:bcs rpg00
+     jsr recevedata:bcs rpg00
+     jsr inchksum:bcc rpg01+1
+rpg00 dec try:bpl rpg0
+     jsr clr2:jsr to
+rpg01 sec:rts
+;
+inchksum jsr getrs:bcs rpg01:cmp chksum:bne rpg01:clc:rts
+;
+recevedata lda misa:sta pno:jsr xpno
+     lda #0:sta chksum:sta destin
+     lda #4:sta destin+1
+     jsr chkrec:bcs rpg01:cmp #0:bne rpg2b
+     jsr clr2:jmp rpgsum
+rpg2 jsr chkrec:bcs rpg01
+rpg2b cmp #$d9:beq rpg3:ldy #1:bne rpg3b
+rpg3 jsr chkrec:bcs rpg01
+     tay:jsr chkrec
+rpg3b sty source:tax
+rpg4 ldy #0:txa:sta (destin),y
+     jsr incdest:lda destin:cmp #$b0:bne rpg5
+     lda destin+1:cmp #5:beq rpgsum
+rpg5 dec source:bne rpg4:beq rpg2
+rpgsum jsr to:clc:rts
+;
+chkrec jsr getrs:bcs chkr1:pha
+     clc:adc chksum:sta chksum:pla:clc
+chkr1 rts
+;
+;
+; transmettre l'heure
+;
+trheure lda hrdisp:beq chkr1
+      lda #5:sta try ; nombre d'essaies
+trhr0 lda #4:jsr rscommande:bcs trhr3
+      jsr writetime:jsr inchksum:bcc chkr1
+trhr3 dec try:bpl trhr0 ; autres essaies
+rscs  sec:rts
+;
+writetime ldx #0:stx chksum:lda tlogo:jsr chksend
+trhr1 lda an,x:jsr chksend:inx:cpx #4:bne trhr1
+      lda $dc0b:tax:and #127:cmp #$12:bne trhr1b
+      txa:eor #$80:tax
+trhr1b txa:jsr chksend:ldx #2
+trhr2 lda $dc08,x:jsr chksend:dex:bpl trhr2
+      rts
+;
+;
+; envoyer une commande et attendre acknoledge
+;
+rscommande tax:ora #$50:sta acc:jsr rsceor
+     cpx #2:bcs rscom2
+     lda misa:jsr rsceor
+rscom2 jsr getrs:bcs rscs
+     eor #$ff:cmp acc:bne rscom2
+     jsr getrs:bcs rscs:cmp acc:bne rscom2
+     jsr getrs:bcs rscs:tay
+     jsr getrs:bcs rscs:cpy #$5e:bne rscs
+     cmp #$a1:bne rscs:clc:rts
+;
+rsceor jsr putrs:eor #$ff:jmp putrs
+;
+;
+; envoyer le mot de passe de l'emeteur
+;
+callerpass ldx #4:jsr pause:ldy #0
+calp1 lda cpasse,y:beq calp2:iny:jsr putrs:jmp calp1
+     ldx #2:jsr pause ; attendre 2 secondes
+calp2 jsr getrs:bcs clap3:cmp rpasse:bne calp2
+     jsr getrs:bcs clap3:cmp rpasse+1:bne calp2
+     jsr getrs:bcs clap3:cmp rpasse+2:bne calp2
+     jsr rsflush:clc ; vider reste et terminer
+clap3 rts
+;
+cpasse .asc "dtxdtxdtxdtxdtx":.byte 0
+rpasse .asc "ouiouiouiouioui":.byte 0
+;
+;
+; lire l'heure du modem
+;
+readtime ldy #0:sty chksum:sta $dc0e
+     jsr chkrec:bcs gethr:sta tlogo
+geth1 jsr chkrec:bcs gethr
+     sta an,y:iny:cpy #4:bcc geth1
+geth2 jsr chkrec:bcs gethr
+     sta $dc07,y:dey:bne geth2
+     ldy #1:sty hrdisp:dey:sty fgenerique
+gethr lda $dc0b:sta rh
+      lda #1:sta $dc0e:rts
+;
+;
+;
+; tester le mode reponse sans sonnerie
+;
+answtest lda 653:and #5:cmp #5:bne answt4  ; shift ctrl => repondre
+     jsr rsopen:bcs answt2
+     lda #65:sec:jsr atsend ; ata
+     lda 653:and #2:beq answt2
+     lda #$81:sta refresh  ; C= => accepter data
+answt2 jsr rsclose
+answt3 lda 653:bne answt3
+answt4 rts
+;
+;
+; repondre a un appel telephonique
+;
+answer lda modemp:bne answ2
+answ1 rts
+answ2 jsr answtest
+     lda prb:and #16:bne answ1
+     lda #0:sta fscroll:jsr logop:lda #5:sta try
+answ2b dec try:bpl answ2c:jmp answquit
+answ2c jsr rsopen:bcs answ2b
+answ3 jsr getrs:bcs answ2b
+     cmp cpasse:bne answ3 ; mot de passe
+     jsr getrs:bcs answquit:cmp cpasse+1:bne answ3
+     jsr getrs:bcs answquit:cmp cpasse+2:bne answ3
+     ldx #1:jsr pause:ldy #0
+answ4 lda rpasse,y:beq answ5:jsr putrs:iny:bne answ4
+answ5 jsr rsflush:lda pno:sta pagescr
+;
+ansmain lda prb:and #16:bne answquit
+     jsr getrs:bcs ansmain:tax
+ansm1 txa:sta acc:and #$f0:cmp #$50:bne ansmain
+     jsr getrs:bcs ansmain:tax
+     eor #$ff:cmp acc:bne ansm1
+     lda acc:and #15:cmp #2:bcs answ6
+     jsr getrs:bcs ansmain:sta misa
+     jsr getrs:bcs ansmain:eor #$ff
+     cmp misa:bne ansmain:beq answ6
+;
+answquit jsr raccroche:jsr rsclose
+     sei:ldx #$ff:txs:cli
+ansq1 lda pagescr:sta pno:jsr from
+     jsr cto:jmp edit
+;
+answ6 lda acc:eor #$ff:jsr rsceor ; acknoledge
+     lda acc:and #15:tax:dex:bpl answ7
+;
+; recevoir une page du maitre
+;
+     lda misa:cmp toppage:bcs norefresh
+     lda #0:sta refresh ; plus besoin de pages
+     jsr sendyes:jsr recevedata:jmp outchksum
+;
+answ7 dex:bpl answ8
+;
+; envoyer la page demandee par le controleur
+;
+     lda misa:cmp toppage:bcs norefresh
+     jsr sendyes:jsr senddata:jmp outchksum
+;
+answ8 dex:bpl answ9
+;
+; indiquer si on a besoin d'un backup
+;
+     lda refresh:and #$7f:beq norefresh
+     jsr sendyes:jmp ansmain
+norefresh lda #$5f:jsr rsceor:jmp ansmain
+;
+sendyes lda #$5e:jmp rsceor
+;
+answ9 dex:bpl answ10
+;
+; on nous demande l'heure
+;
+       lda hrdisp:beq norefresh
+       jsr sendyes:jsr writetime:jmp outchksum
+;
+answ10 dex:bpl answ11
+;
+; reception de l'heure
+;
+     jsr sendyes:jsr readtime
+outchksum lda chksum:jsr putrs
+;
+answ11 jmp ansmain
+;
+;
+modemsave ldx #16:lda modemp:bne mds1:rts
+     mds1 dex:bmi mstf1
+     lda buffer,x:cmp modemnam,x
+     beq mds1:rts
+;
+;
+; charger le fichier du maitre s'il y a lieu
+;
+mfbuffer = $c600
+modemnam .asc "0 MODEM         "
+masterfichier lda #8:tax:ldy #0:jsr $ffba
+     lda #16:ldx #<modemnam:ldy #>modemnam:jsr $ffbd
+     lda #0:ldx #<mfbuffer:ldy #>mfbuffer:jsr $ffd5 ; load
+     jsr drvmess:bcc mstf1:jmp from
+;
+mstfq ldx mfbuffer:inx:stx maitre:jmp from
+mstf1 lda #0:sta ypos:sta pr1
+mstf2 inc ypos:jsr pcur:ldx pr1:ldy #4:lda #$ff
+mstf3 sta mfbuffer,x:inx:dey:bne mstf3 ; supposer rien de bon
+     lda ypos:cmp #11:beq mstfq:ldy #1:lda (ligne),y
+     sta mfbuffer,x:inx:cmp #11:beq mstf4:cmp #13:bne mstf2
+mstf4 cpy #32:bcs mstf2:iny:lda (ligne),y:beq mstf4
+     cmp #13:beq mstf4:cmp #8:beq mstf4:cmp #9:beq mstf4
+     cmp #26:beq mstfn
+     jsr ccode:sta mfbuffer,x:inx:bne mstf4
+mstfn lda #13:sta mfbuffer,x:ldx pr1
+mstf5 lda #0:sta mem1
+mstf6 cpy #32:bcs mstf7:iny:lda (ligne),y:beq mstf6
+     cmp #12:beq mstf7:cmp #27:beq mstf7
+     pha:lda mem1:asl:asl:asl:asl mem1  ; mem1*10+a
+     clc:adc mem1:sta mem1:pla:and #15
+     clc:adc mem1:sta mem1:jmp mstf6
+mstf7 lda mem1:cmp toppage:bcs mstf8; trop gros...
+     sta mfbuffer,x:inx:cpy #32:bcc mstf5
+;
+     txa:and #7:cmp #5:bcs mstf8 ; plus de 4 no page=>erreur
+     lsr:bcs mstf8 ; nombre impair de no page => erreur
+     lda pr1:clc:adc #24:sta pr1
+mstf8 jmp mstf2
+;
+;
+; appeler les esclaves...
+;
+;
+mastercall lda modemp:bne mcr1
+mcr0 rts
+mcr1 lda maitre:beq mcr0
+     lda call:bne mcr1b
+     lda refresh:bmi mcr0:beq mcr0
+;     
+mcr1b lda #0:sta fscroll:sta adrscr
+     lda pno:sta pagescr
+     jsr logop:jsr rsopen:bcs mcrq
+mcr2 ldy adrscr:lda mfbuffer,y:cmp #$ff:beq mcrq
+     lda mfbuffer+1,y:cmp #$ff:beq mcrq
+     lda #3:sta cari
+     ;
+     lda mfbuffer+4,y:sta deg1:tax:cmp #13:bne mcra
+     lda #100:sta cari ; insister si "-"
+mcra lda refresh:bmi mcr2b
+     and #$7f:bne mcr3
+mcr2b cpx #11:bne mcr3a
+     ;
+mcr3  dec cari:bpl mcr3b
+mcr3a jmp mct5               ; tenter 3 fois la communication
+mcrq lda refresh:ora #$80:sta refresh
+     lda #0:sta call:jmp answquit
+mcr3b lda #68:clc:jsr atsend ; atd
+      ldy adrscr
+mcr4 iny:lda mfbuffer+4,y:jsr putrs:cmp #13:bne mcr4
+     lda #0:sta $a1:sta $a2
+mcr5 lda $a1:cmp #30:bcs mcr6
+     lda 197:cmp #64:bne mcrq
+     lda prb:and #16:beq mcrtrans
+     jsr rx13:bcs mcr5:cmp #1:beq mcrtrans
+     cmp #3:bne mcr5
+mcr6 jsr raccroche:jmp mcr3
+mcrnext lda adrscr:clc:adc #24:jmp mcr2
+mcrtrans jsr callerpass:bcs mcr6
+     lda #5:sta try
+     lda deg1:cmp #13:beq mct1a
+     jsr trheure
+mct1 dec try:bmi mct4
+     lda #2:jsr rscommande
+     bcs mct1:bcc mct1b ; a-t-il a besoin de pages
+;
+mct1a lda #3:sta try ; demander l'heure
+mct1aa dec try:bmi mct1b:lda #3:jsr rscommande:bcs mct1aa
+     jsr readtime:jsr inchksum:bcs mct1aa
+;
+mct1b ldy adrscr:lda mfbuffer,y:sta misa
+     lda mfbuffer+1,y:sta misb:inc misb
+mct2 jsr dotrans:bcs mct4:inc misa
+     lda misa:cmp misb:bcc mct2
+     ldy adrscr:lda mfbuffer+2,y
+     cpy #$ff:beq mct4:sta misa
+     lda mfbuffer+3,y:cmp #$ff:beq mct4:sta misb:inc misb
+mct3 jsr dotrans:bcs mct4:inc misa:lda misa:cmp misb:bcc mct3
+mct4 jsr raccroche
+mct5 lda adrscr:clc:adc #24:sta adrscr:jmp mcr2
+;
+dotrans lda deg1:cmp #13:beq dot1:jmp sendpage
+dot1    jmp recevepage
+;
+;
+xpno ldy #0:sty xpos
+jsr efligney:ldx pno:jmp phex
+;
+
+;
+.end "dtx100.pal"
+

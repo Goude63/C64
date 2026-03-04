@@ -1,0 +1,2594 @@
+ ;
+ ;        DTX-100 V4.2, 9 juillet 1991
+ ;
+ ;
+ ; date de creation...
+ ; 
+   can = $91:cmois = $7:cdate = $9:cjour = $3 ; mardi 9 juillet 1991
+ ;
+ *= $8000
+ ;
+ thref = 26450:thmul = 6:spd = 50
+ source = 3:destin = 5:long = 7
+ amul = 9:ymul = $c:mem1 = $d
+ tflash = $d:pno = $e:xpos = $f
+ ypos = $10:no = $12:lig = $14
+ col = $15:acc = $17:centry = $18
+ centrx = $19:phase = $1a
+ double = $1b:phgr = $1c:car = $1e
+ tampona = $2b:tamponb = $38
+ fcherche = $47:soulig = $48
+ fscroll = $49:ct10scr = $4a
+ next = $4b:dscroll = $4d
+ comm = $59:ligne = $5a
+ maxcol = $5c:maxlig = $5d
+ hrs = $5e:fmajusc = $5f
+ fsoulig = $60:bufpos = $61
+ fclr = $62:firstl = $63:lastl = $64
+ lng = $65:type = $66
+ an = $68:mois = $69:date = $6a
+ jour = $6b
+ rh = $6c:frh = $6d:rs = $6e
+ pind = $6f:fprio = $73
+ fgenerique = $74:ligscr = $75
+ colscr = $76:pagescr = $77
+ adrscr = $78:accscr = $7a
+ cari = $7b:scrspeed = $7d
+ misa = $7e:misb = $7f
+ txlig = $80:deg1 = $82:deg2 = $83
+ tlogo = $84:rclign = $85
+ toppage = $86:express = $87
+ rommask = $88:pr1 = $89:pr2 = $8b
+ modemp = $8d:maitre = $8e:hrdisp = $8f
+ call = $fb:refresh = $fc:drivep = $fd
+ rspeed = $2a7
+ ;
+ ;
+ ;constantes
+ ;
+ hgr = $e000:color = $cc00:table = $da3c
+ buffer = $205:topram = 70:toprom = 100
+ pra = $dd00:prb = $dd01
+ ddra = $dd02:ddrb = $dd03:chrin = $ffcf 
+ nbtry = 10 ; nombre d'essais de transmission
+ ;
+ ;
+ ; routine de transfert cold start
+ ;
+ ;
+ .word coldstart,nmi:.asc "CBM80"
+ coldstart sei:jsr $fda3:jsr $fd50:jsr $fd15
+ jsr $ff5b:sei:ldx #$ff:txs
+ lda #toprom:sta toppage:lda #toprom-5:sta express
+ lda #3:sta rommask ; si cartouche
+ lda $8000:tax:inc $8000
+ cmp $8000:beq cart:lda #topram
+ sta toppage:lda #topram-5:sta express
+ lda #2:sta rommask ; si en ram, 70 pages
+ lda 1:and #$de:sta 1 ; enleve basic, moteur on
+ cart stx $8000:jsr rom
+ ldx #0:stx source
+ stx destin:stx long
+ lda #$80:sta source+1:sta destin+1
+ lda #$40:sta long+1:jsr transfert; transferer cartouche en ram
+ lda #$80:sta source+1:sta destin
+ sta long:lda #$cb:sta destin+1
+ lda #<sprite:sta source
+ lda #0:sta rclign
+ sta long+1:jsr transfert; transfert des sprites
+ lda #can:sta an:lda #cmois:sta mois
+ lda #cdate:sta date:lda #cjour:sta jour; date
+ lda #5:sta tlogo:sta call:sta refresh
+ ldx #0:stx $dc0b:stx $dc08:jmp panne
+ ;
+ nmij jsr nmija:lda hrdisp:bne warm1
+ ldx #xdate:jsr cmed:ldx #xheure:jsr cmed
+ warm1 ldx #$ff:txs:jmp edit
+ ;
+ ;
+ ; sprites des curseurs
+ ;
+ sprite = *
+ .byte $ff,$ff,$f0,$ff,$ff,$f0
+ .byte $ff,$ff,$f0,$ff,$ff,$f0
+ .byte $ff,$ff,$f0,$ff,$ff,$f0
+ .byte $ff,$ff,$f0,$ff,$ff,$f0
+ .byte $ff,$ff,$f0,$ff,$ff,$f0
+ .byte $ff,$ff,$f0,$ff,$ff,$f0
+ .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0
+ .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0
+ ;
+ .byte $ff,$c0,$00,$ff,$c0,$00
+ .byte $ff,$c0,$00,$ff,$c0,$00
+ .byte $ff,$c0,$00,$ff,$c0,$00
+ .byte $ff,$c0,$00,$ff,$c0,$00
+ .byte $ff,$c0,$00,$ff,$c0,$00
+ .byte $ff,$c0,$00,$ff,$c0,$00
+ .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0
+ .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0
+ ;
+ ;
+ ; effacer la page graphique
+ ;
+ cls lda #11:sta lastl:lda #1:bne eft0
+ eftout lda #12:sta lastl:lda #0
+ eft0 sta ypos:jsr normal
+ eft1 jsr efligne:inc ypos
+ lda ypos:cmp lastl:bne eft1:rts
+ ;
+ ;
+ ; imprimmer une ligne
+ ;
+ pligne jsr efligne
+ pligneb jsr clign:jsr pcur
+ ldx #0:stx xpos:ldy #1
+ plg1 lda (ligne),y:beq plg3
+ jsr print:iny:lda double:beq plg2
+ iny:plg2 lda xpos:bne plg1:rts
+ plg3 iny:ldx xpos:lda double:beq plg4
+ inx:iny:plg4 inx:stx xpos
+ cpx maxcol:bcc plg1:rts
+ ;
+ ;
+ ; imprimmer la page a $400
+ ;
+ rpnoppage jsr from:ctr = rpnoppage
+ pnoppage jsr afpno
+ ppage jsr cls:jsr pcur:jsr afcolor
+ ldx #1:stx ypos:inx:stx fclr
+ ppa01 jsr pligneb:inc ypos
+ lda ypos:cmp maxlig:bne ppa01:rts
+ ;
+ ; imprimmer etat de la page
+ ;
+ petat ldy #0:tax:and #8:beq eta1
+ ldy #48:eta1 txa:and #4:beq eta2
+ ldy #33:eta2 txa:and #2:beq eta3
+ ldy #10:eta3 txa:and #64:bne eta3b
+ ldy #14:eta3b tya:jsr print
+ ldy #0:txa:and #16:beq eta4:iny
+ eta4 txa:and #128:beq eta5:iny:iny
+ eta5 lda ptd,y:jmp print
+ ;
+ ;
+ ; imprimmer le numero et le titre
+ ;
+ afpno lda $400:pha:ora #$40:sta $400
+ sec:jsr chkpage:jsr normal:sta xpos:sta ypos
+ jsr efligne:ldx pno:jsr phex
+ ldy #0:lda $400:jsr petat
+ lda #11:sta xpos:pla:sta $400
+ ;
+ ;
+ ; imprimmer le titre
+ ;
+ ptitre ldy #0
+ pti01 lda $409,y:jsr print
+ iny:cpy #10:bne pti01:rts
+ ;
+ ptd .byte 0,13,26,67
+ ;
+ ;
+ ; imprimmer nombre en x
+ ;
+ jphex lda #0:sed
+ pex01 dex:bmi pex02:clc:adc #1
+ jmp pex01:pex02 cld:rts
+ ;
+ ;
+ ; imprimmer en bcd
+ ;
+ phex jsr jphex
+ separe pha:lsr:lsr:lsr:lsr
+ ora #16:jsr print:pla:and #$0f
+ ora #16:jmp print
+ ;
+ ;
+ ; initialiser une page
+ ;
+ clr2 lda #<dinip:sta source
+ lda #>dinip:sta source+1
+ jmp decomp
+ dinip .byte 0,4,0,$22,$d9,4,0
+ .byte $99,$99,$d9,11,0
+ .byte $16,$d9,80,$10,$16
+ .byte $d9,255,0,$d9,76,0,$d9,0
+ ;
+ ;
+ ; clignotter la page
+ ;
+ clign ldx $dc08:ldx rclign:inx:bne cli00:jmp pheure
+ cli00 lda $400:and #1:sta centry:lda rclign:beq cli0:lda $dc08
+ cmp #5:bcc pheure:jsr afcolor:lda #0:sta rclign:beq pheure
+ cli0 lda $dc08:cmp #5:bcs pheure
+ ;
+ cli1 lda #$66:sta source
+ lda #4:sta source+1:ldx #10
+ lda #<(color+80):sta destin:lda #>(color+80):sta destin+1:lda centry
+ beq cli2:lda destin:clc:adc #40:sta destin:bcc cli2:inc destin+1
+ cli2 ldy #0:lda (source),y:and #32:beq cli4
+ cli3 lda (destin),y:and #$f:sta rclign:asl:asl:asl:asl:ora rclign
+ sta (destin),y:iny:cpy #80:bne cli3
+ cli4 lda destin:clc:adc #80:sta destin:bcc cli5:inc destin+1
+ cli5 lda source:clc:adc #33:sta source:bcc cli6:inc source+1
+ cli6 dex:bne cli2
+ lda #5:sta rclign
+ ;
+ ;
+ ; imprimmer l'heure
+ ;
+ pheure lda $dc08:jsr normal
+ lda $dc09:cmp rs:beq ph1:sta rs
+ lda fgenerique:bne ph1
+ lda hrdisp:beq ph1
+ lda xpos:pha:lda ypos:pha
+ lda #11:sta ypos
+ lda #23:sta xpos:jsr h24
+ jsr separe:lda #26:jsr print
+ lda $dc0a:jsr separe
+ lda #26:jsr print
+ lda $dc09:jsr separe:lda $dc08
+ pla:sta ypos:pla:sta xpos
+ ph1 rts
+ ;
+ ; convertion en base 24 heure
+ ;
+ h24 lda $dc0b:cmp #$12:bne jup
+ lda #0:jup tax:and #128:beq h21
+ txa:and #127:cmp #$12:bne h22
+ tax:jmp h21:h22 sed:clc:adc #$12
+ cld:tax:h21 txa:sta hrs:ldx $dc08:rts
+ ;
+ ;
+ ; effacer la ligne en cours
+ ;
+ efligney sty ypos
+ efligne lda ypos:cmp #0:beq efl0a
+ cmp #11:bne efl0:efl0a jsr normal
+ efl0 lda ypos:asl:asl:ldy #160
+ ldx #source:jsr mul:lda centry:beq effl1
+ lda source:clc:adc #<320:sta source
+ lda source+1:adc #>320:sta source+1
+ effl1 lda source:clc:adc #<hgr:sta source:sta destin
+ lda source+1:adc #>hgr:sta source+1
+ sta destin+1:inc destin+1:tya
+ efl01 sta (source),y:sta (destin),y
+ iny:bne efl01:inc destin+1
+ efl02 sta (destin),y:iny:cpy #$80
+ bne efl02:ldy ypos:cpy #1:beq efhaut
+ iny:cpy maxlig:beq efbas:rts
+ ;
+ efhaut lda #0:tax
+ efh1 sta hgr+640,x:sta hgr+800,x
+ inx:cpx #160:bne efh1:rts
+ ;
+ efbas lda #0:tax
+ efb1 sta hgr+6720,x:sta hgr+6880,x
+ inx:cpx #160:bne efb1:rts
+ ;
+ ; afficher les couleurs
+ ;
+ afcolor lda centry:sta lng
+ lda #<(color+80):sta destin
+ lda #>(color+80):sta destin+1
+ afcy ldx #0
+ afc02 lda $414,x:ldy #0
+ afc03 sta (destin),y:iny:cpy #5
+ bne afc04:ldy centry:beq afc03b:cpx #72:bcs afc05
+ afc03b ldy #40:afc04 cpy #45:bne afc03
+ afc05 lda destin:clc:adc #5:sta destin
+ lda destin+1:adc #0:sta destin+1
+ inx:txa:cmp #80:beq afcfin
+ and #7:bne afc02
+ lda lng:beq afcpy:lda #0:sta lng
+ lda #<(color+120):sta destin
+ lda #>(color+120):sta destin+1
+ jmp afcy
+ afcpy lda destin:clc:adc #40:sta destin
+ lda destin+1:adc #0:sta destin+1
+ jmp afc02
+ afcfin lda $465:sta $d020:ldx #39
+ afc01 lda $413:sta color,x
+ sta color+40,x:lda $464
+ sta color+880,x:sta color+920,x
+ dex:bpl afc01:rts
+ ;
+ ;
+ ;  positionner le curseur
+ ;
+ pcur ldy ypos:dey:lda #33
+ ldx #ligne:jsr mul:lda ligne
+ clc:adc #$66:sta ligne:lda ligne+1
+ adc #4:sta ligne+1:ldy #0
+ lda (ligne),y:iny:tax:and #$80
+ sta double:beq pcu:lda xpos:and #$fe:sta xpos
+ pcu txa:and #$40:sta centrx
+ lda $400:and #1:sta centry
+ lda #32:sta maxcol:lda centrx
+ beq cor1:dec maxcol
+ cor1 lda double:beq cor2:dec maxcol
+ cor2 lda #11:sta maxlig:lda centry
+ beq cor3:dec maxlig
+ cor3 lda xpos:cmp maxcol:bcc cor4
+ ldx maxcol:dex:stx xpos
+ cor4 rts
+ spcur lda ypos:asl:asl:asl:asl
+ clc:adc #56:ldx centry:beq pcu01
+ clc:adc #8:pcu01 sta $d001:sta $d003
+ lda xpos:ldy #10:ldx #source
+ jsr mul:lda #24:ldx centrx:beq pcu02
+ lda #29:ldx double:beq pcu02:lda #34
+ pcu02 clc:adc source:sta $d000:sta $d002
+ lda source+1:adc #0:sta $d010:asl:ora $d010:sta $d010
+ lda #0:ldx double:beq pcu03
+ lda #255:pcu03 sta $d01d
+ lda #0:ldx fsoulig:beq pcu04
+ lda #$ff:pcu04 sta $cbea:and #$c0:sta $cbeb
+ lda #255:ldx fmajusc:beq pcu05
+ lda #170:pcu05 sta $cbc3:rts
+ ;
+ ;
+ ; metre impression normale
+ ;
+ normal lda #33:sta maxcol:lda #0
+ sta double:sta centrx:sta centry
+ rts
+ ;
+ ;
+ ; routine d'edition de texte
+ ;
+ edit lda lig:sta ypos
+ lda col:sta xpos
+ move ldy #1:sty $d015:sty drivep:dey
+ lda xpos:sta col:lda ypos:sta lig
+ clignote jsr pcur:jsr spcur
+ jsr stop:beq clignote
+ cmp #0:bne ed02
+ jsr control:beq edit:bcs move
+ jsr clign:jmp clignote
+ ed02 jsr control:beq edit:bcs move
+ ldx #2:stx fclr
+ jsr convert:bcs clignote
+ ldy xpos:iny:sta (ligne),y
+ jsr print:lda xpos:bne ed03
+ inc ypos:lda ypos:cmp maxlig
+ bcc ed03:lda #1:sta ypos
+ ed03 jmp move
+ ;
+ ;
+ ;  convertir ascii en print
+ ;
+ convert cmp #32:bcc setcarry
+ cmp #96:bcs cv01:sec:sbc #32
+ jmp cv02:cv01 sbc #96
+ cv02 ldx fmajusc:beq cv03
+ cmp #33:bcc cv03:cmp #59:bcs cv03
+ clc:adc #64:cv03 ora fsoulig
+ clc:rts:setcarry sec:rts
+ ;
+ ;
+ ;cold start
+ ;
+ colda sei:lda 1:and #223:sta 1
+ lda #0:sta source:sta long
+ sta destin:lda #$9e:sta source+1
+ lda #$d0:sta destin+1:lda #$10
+ sta long+1:jsr ram:jsr transfert:jsr rom ; transfert du logo
+ jsr blank
+ lda #0:sta pno:jsr clr2
+ cld01 jsr to
+ inc pno:lda pno:cmp toppage:bne cld01
+ nmija sei
+ nmiok lda #63:sta $dd02
+ lda #$7f:sta $dc0d:cld
+ sta $dd0d:lda #$81:sta $dc0d
+ lda #1:sta $dc0e:sta lig
+ ldx #$ff:stx $d01b:stx 650
+ lda #<irq:sta $314
+ lda #>irq:sta $315
+ lda #<irqram:sta $fffe
+ lda #>irqram:sta $ffff
+ lda #<nmi:sta $318:sta $fffa
+ lda #>nmi:sta $319:sta $fffb
+ lda $dd02:ora #3:sta $dd02
+ lda $dd00:and #$fc:sta $dd00 ; bank
+ lda #56:sta $d018 ; pos couleurs
+ lda #47:sta color+1016 ; sprite cur
+ lda #46:sta color+1017 ; csprite
+ ldx #0:stx col:stx fmajusc:stx fscroll:stx fgenerique
+ stx fscroll:stx $9d:stx fsoulig:stx pno
+ jsr eftout:lda #72:sta $dc05:lda #spd:sta scrspeed
+ lda #$a5:sta $330:lda #$f4:sta $331
+ jsr $ffae:jsr $ffab:jsr $ffe7:jsr $ffcc
+ jsr rpnoppage:lda #55:sta $d011:rts
+ ;
+ ; verifier touche de controle
+ ;
+ control sta acc:ldx #0
+ ldy 653:cpy #4:beq ctrole
+ cmp #0:beq pasctrl
+ ctr01 cmp commandes,x:beq cmed
+ inx:cpx #ctrls-commandes
+ bne ctr01:beq pasctrl
+ ;
+ ctrole lda 197:ldx #ctrls-commandes
+ ctr02 cmp commandes,x:beq cmed
+ inx:cpx #tbljmp-commandes:bne ctr02
+ pasctrl lda acc:ldx #1:clc:rts
+ ;
+ cmed stx comm:lda #0:sta $d015
+ cpx #params-commandes:bcc cme01:jsr input
+ lda buffer:cmp #13:beq cme02
+ cme01 lda comm:asl:tax:lda tbljmp,x
+ sta destin:lda tbljmp+1,x
+ sta destin+1:jsr exec
+ cme02 lda comm:cmp #7:bcc tmove
+ cmed1 lda 197:cmp #64:bne cmed1
+ ldx #0:stx 198:rts;  edit
+ tmove ldx #1:sec:rts;	 move
+ ;
+ exec jmp (destin)
+ ;
+ ;
+ ; codes du clavier
+ ;
+ commandes .byte 17,145,157,29,19
+ .byte 13,147,20,148,134,135,136,133
+ ;
+ ;controles
+ ;
+ ctrls .byte 14,17,33,10,23,20,56,11
+ .byte 32,40,43,48,62,38,46,49
+ .byte 26,45,9,51,0
+ xctcv = *-commandes:.byte 7
+ xctch = *-commandes:.byte 2,39
+ ;
+ ;controles avec parametres
+ ;
+ params .byte 57,59,22,25,30
+ xsave	= *-commandes:.byte 13
+ xdate	= *-commandes:.byte 18
+ xheure = *-commandes:.byte 29
+ xkill	= *-commandes:.byte 37
+ xload	= *-commandes:.byte 42,41,54
+ xver	= *-commandes:.byte 31,21,4,36,34,12
+ ;
+ xtrans = *-commandes
+ xrecev = xtrans+1
+ ; 
+ ; table de jumps
+ tbljmp .word down,up,left,right
+ .word home,return,clrhome,del,inst
+ .word f3,f5,f7,f1,cte,ctr,cti
+ .word cta,ctx,ctc,ct1,ct4,ct9,ctplus
+ .word ctmoin,ctpr,ctq,cto,ctat,ctetoile,ctg,ctex
+ .word ctv,ctclr,ctinst,ctc,ctc,cteq,cttr,ct2
+ .word ctt,cty,ctu,cts,ctd,cth,ctk,ctl
+ .word ctp,ctti,verify,ctf,ctf1,ctm,ctj,ctz
+ ;
+ message .asc "transfere A"
+ .asc "page finalE"
+ .asc "tempSentrEsortiEsavE"
+ .asc "datEheurEefFloaD"
+ .asc "pagEtitrEveRformatter ? o/N"
+ .asc "temps du logO"
+ .asc "mise a jouRindeXteL"
+ .asc "transmettrErecevoiR"
+ ;
+ ;
+ ; lire parametres
+ ;
+ input jsr normal
+ ldy #11:jsr efligney
+ lda comm:sec:sbc #params-commandes
+ sta acc:ldy #0:sty xpos
+ dey:jsr normal
+ in01 iny:dec acc:bmi in03
+ in02 lda message,y:bmi in01
+ iny:jmp in02
+ in03 lda fmajusc:pha:lda #128:sta fmajusc
+ inpr lda message,y:sta mem1
+ and #$7f:jsr pascii:iny
+ lda mem1:bpl inpr:lda #26:jsr print
+ ;
+ ldy #1:sty $d015
+ dey:sty bufpos
+ in03b lda 197:cmp #64:bne in03b
+ lda #0:sta 198
+ inmain jsr spcur:jsr clign
+ jsr stop:beq inmain:cmp #0:beq inmain
+ cmp #65:bcc crsr0:cmp #91:bcs crsr0
+ ora #128
+ crsr0 cmp #157:bne crsr1:lda #20
+ crsr1 cmp #29:bne crsr2:lda #32
+ crsr2 cmp #20:bne in04:lda bufpos
+ beq inmain:in4a dec bufpos:dec xpos
+ lda #0:jsr print:dec xpos
+ bne inmain
+ in04 ldy bufpos:sta buffer,y
+ pha:jsr pascii:pla
+ inc bufpos:cmp #13:beq in06
+ lda xpos:cmp #23:bne inmain:beq in4a
+ in06 lda #0:sta $d015:sta bufpos
+ pla:sta fmajusc:jmp efligne
+ ;
+ ;
+ ; imprimmer de l'ascii
+ ;
+ pascii jsr convert:and #$7f
+ jmp print
+ ;
+ ; return
+ ;
+ return lda #0:sta xpos
+ ;
+ ; descendre
+ ;
+ down ldx ypos:inx:cpx maxlig:bcs do1
+ inc ypos:rts:do1 lda #1:sta ypos:rts
+ ;
+ ; monter
+ ;
+ up ldy ypos:dey:bne up1
+ ldy maxlig:dey:sty ypos:rts
+ up1 dec ypos:do01 rts
+ ;
+ ; a gauche
+ ;
+ left lda xpos:beq lft1
+ dec xpos:lda double:beq do01
+ dec xpos:rts
+ lft1 jsr up:jsr pcur:ldx maxcol
+ dex:stx xpos:rts
+ ;
+ ; a droite
+ ;
+ right ldx xpos:inx:lda double
+ beq rt1:lda centrx:beq rt1:inx:rt1 cpx maxcol
+ bcs rt3:inc xpos:lda double
+ beq do01:inc xpos:rts
+ rt3 ldx #0:stx xpos:jmp down
+ ;
+ ; home
+ ;
+ home ldy #0:sty xpos
+ iny:sty ypos:rts
+ ;
+ ; effacer une ligne texte
+ ;
+ cte jsr efligne:ldy #0:tya
+ cte1 sta (ligne),y:iny
+ cpy #33:bne cte1:rts
+ ;
+ ; mettre en gros/petit caracteres
+ ;
+ ctg jsr cte:ldy #0:lda #128
+ sta (ligne),y:rts
+ ;
+ ; page suivante
+ ;
+ ctplus jsr to
+ ldy pno:iny:cpy toppage:bne ctpl1
+ ldy #0:ctpl1 sty pno:jmp rpnoppage
+ ;
+ ; page precedente
+ ;
+ ctmoin jsr to:ldy pno:dey:bpl cmm
+ ldy toppage:dey:cmm sty pno:jmp rpnoppage
+ ;
+ ;
+ ; sousligner
+ ;
+ f7 lda fsoulig:eor #128:sta fsoulig:rts
+ ;
+ ; majuscules
+ ;
+ f5 lda fmajusc:eor #1:sta fmajusc:rts
+ ;
+ ; clear home
+ ;
+ clrhome jsr cls:lda #0
+ sta $400:ldy #164
+ ch1 sta $466,y:sta $50b,y
+ dey:cpy #255:bne ch1:ldy #9
+ ch2 sta $409,y:dey:bpl ch2
+ dec fclr:bne ch3
+ jsr clr2:jsr afcolor
+ ch3 jsr afpno:jmp home
+ ;
+ ; inserer un caractere
+ ;
+ inst ldx #1:lda double:beq ins0
+ inx:ins0 ldy maxcol
+ ins1 cpy xpos:bcc ins3:beq ins3
+ dey:lda (ligne),y:iny
+ sta (ligne),y:dey:jmp ins1
+ ins3 lda #0:ldy xpos
+ iny:sta (ligne),y
+ dex:bne ins0:ins2 jmp pligne
+ ;
+ ; annuler un caractere
+ ;
+ del ldx #1:lda double
+ beq del0:inx:del0 ldy xpos:iny:iny
+ del1 lda (ligne),y:dey
+ sta (ligne),y:iny:iny
+ cpy #33:bcc del1:lda #0:ldy #32
+ sta (ligne),y:dex:bne del0:lda xpos
+ pha:jsr pligne:pla:sta xpos:rts
+ ;
+ ;  centrer une ligne
+ ;
+ ctx jsr ctrlig:jmp pligne
+ ctrlig ldy #0:lda (ligne),y
+ and #%10111110:sta (ligne),y
+ ctx1 iny:lda (ligne),y:bne ctx2
+ cpy #32:bne ctx1:ldy #0
+ lda (ligne),y:ora #1:sta (ligne),y
+ rts:ctx2 sty source:ldy #33
+ lda comm:cmp #xctcv:bne ctx3:rts
+ ctx3 dey:lda (ligne),y:bne ctx4
+ beq ctx3:ctx4 sty destin
+ lda double:beq ctx5:inc destin
+ ctx5 lda destin:sec:sbc source
+ tay:iny:sty long:lda #32:sec
+ sbc long:beq ctx9:sta acc:ldy source:ldx #0
+ ctx6 lda (ligne),y:sta buffer,x:lda #0:sta (ligne),y
+ inx:iny:cpy #33:bne ctx6
+ lda acc:lsr:clc:adc long:tay
+ ldx long:dex:lda double:beq ctx7
+ tya:and #1:beq ctx7:dey
+ ctx7 lda buffer,x:sta (ligne),y
+ dey:dex:bpl ctx7
+ lda double:bne ctxdouble
+ lda acc:lsr:bcc ctx9
+ ctx8 ldy #0:lda (ligne),y
+ ora #$40:sta (ligne),y
+ ctx9 rts
+ ctxdouble lda long:and #2:bne ctx8
+ beq ctx9
+ ;
+ ; centrer une page
+ ;
+ ctc lda $400:and #$fe:sta $400:lda #1:sta ypos:sta lig
+ ctc1 jsr pcur:jsr ctrlig:inc ypos
+ lda ypos:cmp #11:bne ctc1
+ jsr normal:jsr efligne:lda #1:sta ypos
+ lda comm:cmp #xctch:bne ctc2:jmp ppage
+ ctc2 jsr pcur:ldy #0:sty col
+ lda (ligne),y:and #1:beq ctc3
+ inc ypos:lda ypos:cmp #11
+ bne ctc2:rts
+ ctc3 lda ypos:sta firstl
+ lda #10:sta ypos
+ ctc4 jsr pcur:ldy #0
+ lda (ligne),y:and #1:beq ctc5
+ dec ypos:bne ctc4
+ ctc5 lda ypos:sta lastl
+ sec:sbc firstl:clc:adc #1:sta lng
+ lda #10:sec:sbc lng:lsr:sta acc:inc acc
+ bcc ctc6:lda $400:ora #1:sta $400
+ ctc6 lda firstl:sta ypos:jsr pcur
+ lda ligne:sta source
+ lda ligne+1:sta source+1
+ lda acc:sta ypos:jsr pcur
+ lda ligne:sta destin
+ lda ligne+1:sta destin+1
+ lda lng:ldy #33:ldx #long
+ jsr mul:jsr transfert
+ lda #1:sta ypos
+ ctc7 lda ypos:cmp acc:beq ctc8
+ jsr pcur:jsr cte:inc ypos:jmp ctc7
+ ctc8 lda #10:sta ypos
+ ctc9 lda acc:clc:adc lng:sec:sbc #1:cmp ypos
+ beq ctc10
+ jsr pcur:jsr cte:dec ypos:jmp ctc9
+ ctc10 jmp ppage
+ ;
+ ;
+ ; effacer jusqu'au debut de la page
+ ;
+ ctclr jsr pcur:jsr cte:dec ypos:bne ctclr:rts
+ ;
+ ;
+ ; effacer jusqu'a la fin
+ ;
+ ctinst jsr pcur:jsr cte:inc ypos
+ lda ypos:cmp #11:bne ctinst:rts
+ ;
+ ;
+ ; formatter une disquette
+ ;
+ ctf lda buffer:cmp #207:beq for1:rts
+ for1 jsr motoron:ldy #18
+ ctf2 lda ctfdat,y:sta buffer-2,y
+ dey:bpl ctf2:lda #15:tay:ldx #8
+ jsr $ffba:lda #19:jmp ctkj
+ ctfdat .asc "n0:dtx-100 texte,v4"
+ ;
+ ;
+ ; inserer une ligne
+ ;
+ cti ldy ypos:iny:cpy maxlig
+ bcc cti1:jmp cte
+ cti1 lda ligne:sta source
+ clc:adc #33:sta destin:lda ligne+1
+ sta source+1:adc #0:sta destin+1
+ lda maxlig:sec:sbc ypos:tay:dey
+ lda #33:ldx #long:jsr mul
+ jsr transfert:ctif jsr pcur
+ jsr cte:jmp ppage
+ ;
+ ;  annuler une ligne
+ ;
+ cta ldy ypos:iny:cpy maxlig
+ bcc cta1:jmp cte
+ cta1 lda ligne:sta destin
+ clc:adc #33:sta source:lda ligne+1
+ sta destin+1:adc #0:sta source+1
+ lda maxlig:sec:sbc ypos:tay:dey
+ lda #33:ldx #long:jsr mul
+ jsr transfert:ldy maxlig
+ dey:sty ypos:jmp ctif
+ ;
+ ; protection d'une page
+ ;
+ ctpr lda $400:eor #$10:sta $400
+ ctpr1 sta $400:jmp afpno
+ ;
+ ; blocage volontaire
+ ;
+ ctetoile lda $400:eor #2:jmp ctpr1
+ ;
+ ; collorer la page
+ ;
+ ctq ldy #1:sty ypos:dey:sty xpos
+ lda #2:sta $d015:jsr normal
+ ctqmain lda #11:sta maxlig
+ sta double:lda $400:and #1:sta centry
+ jsr spcur
+ cq0 jsr clign:lda $400:and #1:sta centry
+ jsr $ffe4:cmp #13:bne ctq1:rts
+ ctq1 cmp #17:bne ctq2
+ ctq1a jsr down:jmp ctqmain
+ ctq2 cmp #145:bne ctq3
+ ctq2a jsr up:jmp ctqmain
+ ctq3 cmp #157:bne ctq4
+ lda xpos:sec:sbc #4:sta xpos:bpl ctqmain
+ lda #28:sta xpos:jmp ctq2a
+ ctq4 cmp #29:bne ctq5
+ ctq4a lda xpos:clc:adc #4:sta xpos
+ cmp #32:bne ctqmain
+ lda #0:sta xpos:beq ctq1a
+ ctq5 cmp #43:bne ctq6:inc $d028:jmp ctqmain
+ ctq6 cmp #45:bne ctq7:dec $d028:jmp ctqmain
+ ctq7 cmp #67:bne ctq8:lda $d028:sta $465:sta $d020:jmp ctqmain
+ ctq8 cmp #72:bne ctq9:jsr d028lo
+ lda $413:and #$f0
+ ora acc:sta $413
+ ctqcol jsr afcolor:jmp ctqmain
+ ctq9 cmp #8:bne ctq10
+ jsr d028hi
+ lda $413:and #$f:ora acc
+ sta $413:jmp ctqcol
+ ctq10 cmp #66:bne ctq11:jsr d028lo
+ lda $464:and #$f0:ora acc
+ sta $464:jmp ctqcol
+ ctq11 cmp #2:bne ctq12
+ jsr d028hi:lda $464:and #$0f
+ ora acc:sta $464:jmp ctqcol
+ ctq12 cmp #84:bne ctq13
+ jsr d028hi:jsr ctqx
+ lda $414,x:and #$f:ctq12a ora acc
+ sta $414,x:jsr afcolor:jmp ctq4a
+ ctq13 cmp #32:bne ctq14
+ jsr d028lo:jsr ctqx
+ lda $414,x:and #$f0:jmp ctq12a
+ ctq14 cmp #80:bne ctq15
+ jsr d028lo:ldx #0
+ ctq14b lda $414,x:and #$f0:ora acc
+ sta $414,x:inx:cpx #80:bne ctq14b
+ jmp ctqcol
+ ctq15 cmp #16:bne ctq16
+ jsr d028hi:ldx #0
+ ctq15b lda $414,x:and #$f:ora acc
+ sta $414,x:inx:cpx #80:bne ctq15b
+ jmp ctqcol
+ ctq16 jmp cq0
+ ;
+ d028lo lda $d028:and #$f
+ sta acc:rts
+ ;
+ d028hi lda $d028:asl:asl:asl:asl
+ sta acc:rts
+ ;
+ ctqx ldy ypos:dey:tya:asl:asl:asl
+ sta firstl:lda xpos:lsr:lsr
+ clc:adc firstl:tax:rts
+ ;
+ ;
+ ; chercher un nombre dans a
+ ;
+ nombre jsr skip:ldy #0
+ sty no:sty type
+ nb1 jsr sep:beq nbfin
+ jsr tstnum:bcs error:inc type
+ asl no:asl no:asl no:asl no
+ sec:sbc #48:ora no:sta no
+ jsr get:jmp nb1
+ ;
+ nbfin lda type:beq error
+ cmp #3:bcs error
+ clc:lda no:rts
+ error sec:rts
+ ;
+ ; chercher prochain caractere
+ ;
+ get ldy bufpos:lda buffer,y
+ cmp #13:beq get1:inc bufpos
+ get1 rts
+ ;
+ ; passer separateurs
+ ;
+ skip jsr get:jsr sepb:beq skip
+ ;
+ ; verifier si un separateur
+ ;
+ sep cmp #13:beq sep1
+ sepb cmp #32:beq sep1
+ cmp #58:beq sep1
+ cmp #47:beq sep1
+ cmp #44:beq sep1
+ cmp #45:sep1 rts
+ ;
+ ; verifier si caractere numerique
+ ;  ( carry=0 si oui)
+ ;
+ tstnum cmp #48:bcc tst1
+ cmp #58:rts:tst1 sec:rts
+ ;
+ ; mettre page prioritaire
+ ;
+ ctex lda pno:cmp express:bcs sep1
+ lda $400:eor #128:sta $400
+ jmp afpno
+ ;
+ ; lire l'heure
+ ;
+ cth sei:jsr nombre:bcs cth2
+ ldy #0:sty fgenerique
+ iny:sty hrdisp:sty call
+ cmp #0:bne cth1:lda #$92:bne am
+ cth1 cmp #$13:bcc am
+ sed:sec:sbc #$12:cld:ora #128
+ am sta $dc0b:jsr nombre:bcs cth2
+ sta $dc0a:jsr nombre:bcs cth2:sta $dc09
+ cth2 lda #2:sta $dc08:lda $dc0b:sta rh
+ lda $dc08:cli:jmp afpno
+ ;
+ ;
+ ; lire la date
+ ;
+ ctd jsr nombre:bcs ctd1:sta an
+ jsr nombre:bcs ctd1:sta mois
+ jsr nombre:bcs ctd1:sta date
+ jsr nombre:bcs ctd1:sta jour
+ ctd1 jmp afpno
+ ;
+ ; temps d'affichage
+ ;
+ ctt jsr nombre:bcs ctd1
+ sta $401:rts
+ ;
+ ;
+ ; convertir bcd dans a en nombre
+ ;
+ binaire sei:pha:and #$f0:lsr:sta acc
+ lsr:lsr:clc:adc acc:sta acc
+ pla:and #$f:clc:adc acc:cli:rts
+ ;
+ ; passer a la date suivante
+ ;
+ datt0 ldx jour:inx
+ cpx #8:bcc datt1:ldx #1
+ datt1 stx jour
+ lda date:sed:clc:adc #1:cld
+ sta date:ldx mois:cpx #2:bne datt2
+ lda an:jsr binaire:and #3
+ bne datt2:lda date:cmp #$30
+ beq datt3:rts
+ datt2 lda date
+ cmp finmois-1,x:bcs datt3:rts
+ datt3 lda #1:sta date
+ lda mois:sed:clc:adc #1
+ cmp #$13:bcc datt4
+ lda an:clc:adc #1:sta an:lda #1
+ datt4 sta mois:cld:rts
+ finmois .byte $32,$29,$32,$31
+ .byte $32,$31,$32,$32,$31,0,0,0
+ .byte 0,0,0,$32,$31,$32
+ ;
+ ; afficher la programmation page
+ ;
+ ctv ldy #11:jsr efligney:lda #1:sta xpos
+ lda #116:ldx #1:ldy #1:jsr ctvg:tya:jsr print
+ lda $400:and #$20:beq ctv1
+ lda #100:ldx #2:ldy #4:jsr ctvg
+ lda #102:ldx #6:ldy #2:jsr ctvg:beq ctv1
+ ctvg jsr print:lda #29:jsr print
+ ctv2 lda $400,x:jsr separe:lda #0
+ jsr print:inx:dey:bne ctv2:jmp print
+ ctv1 jsr $ffe4:beq ctv1:jmp efligne
+ ;
+ ;  date d'entree
+ ;
+ cty0 jsr nombre:bcs ctyfin
+ sta $404:jsr nombre:bcs ctyfin
+ sta $405:lda $400:ora #$20
+ sta $400:lda mois:sta $403
+ lda an:sta $402:lda $404
+ cmp date:bcs ctyfin
+ lda $403:sed:clc:adc #1
+ cmp #$13:bcc cty1:lda $402
+ clc:adc #1:sta $402:lda #1
+ cty1 sta $403:cld:ctyfin jmp afpno
+ ;
+ cty  ldx buffer:cpx #216:bne cty0
+ lda $400:and #%01010011
+ sta $400:pla:pla:lda #$99:sta $406:sta $407:jmp afpno
+ ;
+ ;  date de sortie
+ ;
+ ctu jsr nombre:bcs ctyfin
+ sta $406:jsr nombre:bcs ctyfin
+ sta $407:jmp afpno
+ ;
+ ;  titre
+ ;
+ ctti jsr fillb:ldy #9
+ ctti1 lda buffer,y
+ jsr convert:and #$7f:sta $409,y
+ dey:bpl ctti1:jmp afpno
+ ;
+ ;  remplir fin du buffer
+ ;
+ fillb jsr get:cmp #13:bne fillb
+ lda #32
+ filb1 sta buffer,y:iny:cpy #30
+ bne filb1:lda #13:sta buffer,y
+ lda #0:sta bufpos:cpr rts
+ ;		 
+ ; page
+ ;		 
+ ctp jsr nombreb:bcc ctp00:jmp ctptitre
+ ctp00 cmp toppage:bcs cpr
+ pha:jsr to:pla
+ sta pno:jmp rpnoppage
+ ;
+ ;
+ ; sauver sur disque
+ ;
+ cts jsr nombreb:bcc cts0:cts0b rts
+ cmp toppage:bcs cts0b
+ cts0 pha:jsr to:jsr ctk:pla:tax
+ lda pno:pha:stx pno:stx misa
+ ldx #source:jsr tpos
+ lda #0:sta bufpos:jsr nombreb
+ jsr nombreb:bcs cts1
+ sta pno:cmp misa:bcc ctsfin
+ cmp toppage:bcs ctsfin
+ cts1 inc pno:ldx #destin:jsr tpos
+ jsr motoron:ldy #2:jsr setname
+ lda #source:ldx destin
+ ldy destin+1:jsr save:jsr drvmess
+ ctsfin pla:sta pno:jsr rpnoppage:jmp modemsave
+ ;
+ ; loader sur disque (ou verifier)
+ ;
+ ctl lda #0:sta 147:beq load
+ verify lda #1:sta 147
+ ;
+ load lda buffer:cmp #204:bne ctl0:jmp ctllogo
+ ctl0 jsr nombreb:bcs ctl3
+ cmp toppage:bcs ctl3
+ ldy bufpos:dey:ldx buffer,y
+ cpx #58:bne ctl0b:pha:iny:ldx #0
+ ctl0a lda buffer,y:sta buffer,x
+ inx:iny:cmp #13:bne ctl0a:pla 
+ ctl0b pha:jsr to:pla:sta pno:jsr fillb
+ jsr motoron:ldy #0:jsr setname
+ ldx #source:jsr tpos
+ ldx source:ldy source+1:jsr loader
+ lda $90:sta misb
+ jsr drvmess:php:jsr rpnoppage:plp:bcs ctl2
+ lda misb:asl:asl:asl:asl
+ bcc ctl3:lda 147
+ beq ctl2:lda #0:sta xpos:lda #11
+ sta ypos:jsr normal:ldy #0
+ ctl1a lda verdata,y:beq ctl2
+ jsr pascii:iny:bne ctl1a
+ ctl2 sec
+ ctl3 rts
+ verdata .asc "ERREUR DE VERIFICATION":.byte 0
+ ;
+ ;
+ ; regler le nom
+ ;
+ setname ldx #8:txa:jsr $ffba
+ lda #16:ldx #<buffer:ldy #>buffer
+ jmp $ffbd
+ ;
+ ; get nombre bcd et convertire
+ ;
+ nombreb jsr nombre:php
+ jsr binaire:plp:rts
+ ;
+ ; effacer sur disque
+ ;
+ ctk jsr fillb:jsr nombreb
+ bcs ctkfin:lda #83:sta buffer-2
+ lda #58:sta buffer-1:jsr motoron
+ lda #15:tay:ldx #8:jsr $ffba:lda #18
+ ctkj ldx #<(buffer-2)
+ ldy #>(buffer-2):jsr $ffbd
+ jsr $ffc0:jsr $ffe7
+ ctkfin jmp drvmess
+ ;
+ ; inserer une page
+ ;
+ ct1 jsr tsti:jsr to
+ ct1a inc pno:jsr rctm
+ and #$40:beq ct1b
+ lda pno:cmp misa:bne ct1a
+ jsr erreur
+ ct1aa lda acc:sta pno
+ jmp rpnoppage
+ ct1b dec pno:jsr from:inc pno
+ jsr to:dec pno:lda pno
+ cmp acc:bne ct1b:jsr clr2
+ jmp pnoppage
+ ;
+ ; annuler une page
+ ;
+ ct9 jsr tsti
+ inc pno:dec misa
+ ct9a jsr from:dec pno:jsr to
+ lda $400:and #$40:beq ct1aa
+ lda pno:cmp misa:bcs ct9d
+ inc pno:inc pno:bne ct9a
+ ct9d inc pno:jsr clr2:jsr to:jmp ct1aa
+ ;
+ ; clignotter le bord
+ ;
+ tsti ldy express:dey:sty misa
+ lda pno:sta acc:cmp misa:bcc ct9f:pla:pla
+ ;
+ erreur ldy #90:ldx #0:err1 inc $d020
+ dex:bne err1:dey:bne err1:ct9f rts
+ ;
+ ;
+ ;
+ ; mettre ecran gris
+ ;
+ gris jsr cls:lda #<(color+80)
+ sta destin:lda #>(color+80)
+ sta destin+1:lda #<800:sta long
+ lda #>800:sta long+1:lda #16
+ jmp fill
+ ;
+ ; directory du disque
+ ;
+ opdir jsr motoron:lda #8:tax:ldy #0:jsr $ffba
+ lda #1:ldx #<piastre:ldy #>piastre
+ jsr $ffbd:jsr $ffc0:bcs opd1:jmp $ffb7
+ opd1 lda #5:rts
+
+ ct4 jsr to:jsr opdir
+ beq dir0:jmp close
+ dir0 lda #$ff:sta rclign
+ lda fmajusc:sta firstl:lda #128:sta fmajusc
+ dir1 jsr gris:jsr home:lda #16*11+1:ldy #79
+ dirrv sta color+80,y:dey:bpl dirrv
+ ldx #8:jsr $ffc6:jsr chrin:jsr chrin
+ dir2 jsr pheure:jsr $ffcc
+ ldx #8:jsr $ffc6:jsr chrin:jsr chrin
+ jsr $ffb7:beq dir2b:jmp dirfin
+ dir2b jsr chrin:tay:jsr chrin:tax
+ inx:iny:lda #0:sta misa:sta misb:sed
+ blk0 dex:beq blk1:lda misa:clc:adc #$56
+ sta misa:lda misb:adc #2:sta misb
+ bne blk0:blk1 dey:beq blk2
+ lda misa:clc:adc #1:sta misa
+ lda misb:adc #0:sta misb:jmp blk1
+ blk2 cld:lda #0:sta xpos
+ skspc jsr chrin:cmp #32:beq skspc
+ dir3 jsr pascii:jsr chrin
+ cmp #0:bne dir3
+ lda #26:sta xpos:lda misb:clc:adc #48
+ jsr pascii:lda misa:jsr separe
+ dir5 inc ypos:lda ypos
+ cmp #11:bne dir2:jsr $ffcc
+ jsr cmdisk:jsr gris:jsr home:jmp dir2
+ ;
+ cmdisk lda #0:sta 198
+ cmdsk1 jsr pheure:jsr $ffe4:beq cmdsk1
+ ldx #xload:cmp #12:beq cdgo
+ ldx #xver :cmp #22:beq cdgo
+ ldx #xkill:cmp #11:beq cdgo
+ ldx #xsave:cmp #19:beq cdgo:rts
+ ;
+ cdgo pla:pla:txa:pha:jsr close:pla:tax
+ jsr cmed:lda firstl:sta fmajusc
+ lda #0:sta rclign:jmp rpnoppage
+ dirfin jsr close:lda firstl
+ sta fmajusc:jsr cmdisk
+ jsr drvmess:jmp pnoppage
+ piastre .asc "$"
+ ;
+ ; diffusion exclusive une page
+ ;
+ f3 jsr aftitre:ldy #11:jsr efligney
+ jsr therinit:dec rs
+ f3a jsr pbas:jsr stop
+ bne f3a:jsr afpno:lda #11:sta ypos:jmp efligne
+ ;
+ ;
+ ; imprimmer la ligne du bas
+ ;
+ pbas jsr clign
+ ldx #1:stx xpos:lda #11:sta ypos:dex
+ pbas1 lda an,x:jsr separe:cpx #2
+ beq pbas2:lda #15:jsr print
+ inx:bne pbas1
+ pbas2 lda modemp:bne pjour
+ lda $dc09:and #$10:beq pjour
+ jsr thermo
+ ;
+ cpy #0:beq pjour:sty firstl
+ lda #11:sta xpos:ldy #4
+ temp4 lda tempmess,y:jsr pascii
+ dey:bpl temp4:lda firstl:sec
+ sbc #50:tax:lda #11:bcs temp5
+ lda #50:sec:sbc firstl:tax:lda #13
+ temp5 jsr print:jsr phex
+ lda #60:jsr print:lda #99:jmp print
+ tempmess .asc "=PMET"
+ ;
+ pjour ldx #11:stx xpos:lda #0:jsr print
+ ldx jour:dex:txa:asl:asl:asl:tax
+ ldy #8
+ pjour1 lda lesjours,x:stx lastl
+ jsr pascii:ldx lastl
+ inx:dey:bne pjour1:lda #0
+ jmp print
+ lesjours .asc "DIMANCHE"
+ .asc " LUNDI  "
+ .asc " MARDI  "
+ .asc "MERCREDI"
+ .asc " JEUDI  "
+ .asc "VENDREDI"
+ .asc " SAMEDI "
+ ;
+ ;
+ ; fermer bus serie
+ ;
+ close jsr $ffcc:lda #8:jmp $ffc3
+ ;
+ ; couper le video et remettre
+ ;
+ blank lda $d011:eor #$10:sta $d011:rts
+ ;
+ ;
+ ;  diffusion generique
+ ;
+ ct2 jsr nombreb:bcc ct2a
+ ct2aa rts
+ ct2a cmp pno:bcc ct2aa
+ cmp toppage:bcs ct2aa
+ inc fgenerique:sta misa
+ jsr to:jsr eftout:inc misa
+ ct2main jsr placepage
+ ct2b jsr clign:jsr stop:beq ct2fin
+ jsr out:bcc ct2b:inc pno
+ ct2c lda pno:cmp misa:bcc ct2main
+ dec pno:ct2fin jsr clign:jsr stop
+ bne ct2fin:inc fgenerique:jmp afpno
+ ;
+ ;
+ ; placer page lors de diffusion
+ ;
+ placepage jsr from
+ jsr ztime
+ jmp ppage
+ ;
+ ;
+ ; verifier expiration de diffusion
+ ;
+ out lda 197:cmp #1:beq outfin
+ lda #0:ldx $dd0a:beq out1
+ lda #$60:out1 clc:sed:adc $dd09
+ cld:cmp $401
+ outfin rts
+ ;
+ ;
+ ; verifier shift return
+ ;
+ stop jsr $ffe4:cmp #141:rts
+ ;	     
+ ;	     
+ ; routine de diffusion
+ ;
+ cto jsr to:lda hrdisp:bne cto0:jmp notime
+ cto0 jsr therinit:ldy #11
+ jsr efligney
+ lda #$ff:sta rs:jsr pbas
+ nxtheure ldy #0:sty frh:sty fscroll
+ jsr efligney
+ lda pno:pha:jsr chkall
+ jsr initscroll:pla:sta pno
+ lda fscroll:bne cto1:jsr aftitre
+ cto1 lda scrspeed:cmp #12:bcs cto1a
+ lda #12:sta scrspeed
+ cto1a sta $dc05:jsr pageok
+ cto2 jsr modemchk
+ jsr pbas:jsr stop:beq ctofin
+ ldx 197:cmp #43:bne cto3:dec scrspeed
+ cto3 cmp #45:bne cto4:inc scrspeed
+ cto4 cmp #133:bne cto6:lda fscroll
+ pha:lda #0:sta fscroll:jsr stitre
+ jsr logo:jsr blank:jsr eftout
+ logow lda 197:cmp #64:bne logow
+ lda #0:sta 198:jsr ppage:jsr ltitre
+ pla:sta fscroll:jsr blank
+ cto6 lda scrspeed:cmp #12:bcs cto2a
+ lda #12:sta scrspeed
+ cto2a sta $dc05:jsr out:bcc cto2:lda frh
+ beq cto1:jmp nxtheure
+ ctofin lda #0:sta fscroll
+ dec pno:lda #72:sta $dc05:jsr afpno
+ lda #11:sta ypos:jmp efligne
+ ;
+ ;
+ ; lire erreur sur disque
+ ;
+ op8 lda #8:tax:ldy #15:jsr $ffba:lda #0:jsr $ffbd:jmp $ffc0
+ ;
+ drvmess php:lda fmajusc:pha
+ lda drivep:beq dmesno
+ lda #128:sta fmajusc:jsr op8:bcs dmesfin
+ ldx #0:stx xpos:ldy #11:jsr efligney
+ ldx #8:jsr $ffc6:bcs dmesfin:ldy #0
+ dmesmain jsr chrin:tax:jsr $ffb7
+ bne dmesprt:txa:sta buffer+60,y:iny
+ cpy #25:bne dmesmain
+ dmesprt tya:beq dmesfin:ldy #0
+ dmespr1 lda buffer+60,y:cmp #44
+ beq dmespr2:iny:cpy #25:bne dmespr1
+ dmespr2 iny:lda buffer+60,y
+ cmp #44:beq dmespr3:jsr pascii
+ cpy #24:bcc dmespr2
+ dmespr3 cpy #7:bcc dmesfin ; reset drive si message pas ok
+ jsr close:jsr op8:bcs dmesfin:ldx #8:jsr $ffc9:bcs dmesfin
+ lda #85:jsr $ffd2:lda #74:jsr $ffd2 ; "UJ" sur drive ( reset )
+ jsr $ffcc:ldx #2:jsr pause ; attendre 2 secondes
+ dmesfin jsr close:lda #0:sta rclign
+ dmesno pla:sta fmajusc:plp:rts
+ ;
+ ;
+ ; faire clignotter une ligne
+ ;
+ cteq ldy #0:lda (ligne),y
+ eor #%00100000:sta (ligne),y:rts
+ ;
+ ;
+ ; allumer le moteur
+ ;
+ motoron lda #0:sta $a1:sta $a2
+ lda 1:tax:and #32:beq mot2
+ txa:and #16:bne mot2
+ lda 1:and #223:sta 1
+ mot1 lda $a2:cmp #180:bcc mot1
+ mot2 rts
+ ;
+ ;
+ ; inscription de depart
+ ;
+ auto  ldy #0
+ auto1 lda $9c50,y:sta $400,y
+       lda $9e00-256,y:sta $400+432-256,y
+       iny:bne auto1
+ jsr ppage:jsr modemdetect:jsr motoron
+ auto3 jsr stop:beq auto4
+ lda $a1:cmp #3:bne auto3
+ lda 1:and #16:eor #16:ora modemp:beq auto4:rts
+ auto4 jsr rpnoppage:jmp nmij
+ ;
+ ;
+ ; lire la temperature dans y
+ ;
+ thermo lda $dd0d
+ and #%00001000:beq ther2
+ lda $dc06:eor #$ff:sta deg1
+ lda $dc07:eor #$ff:sta deg2
+ jsr thpulse
+ lda deg1:ora deg2:bne ther1
+ ldy #0:sty deg1:rts
+ ther1 lda #<thref:sec:sbc deg1:sta deg1
+ lda #>thref:sbc deg2:sta deg2
+ ldx #thmul
+ ther1a lsr deg2:ror deg1
+ dex:bne ther1a
+ ther2 ldy deg1:rts
+ ;
+ thpulse lda #%00110001:sta $dc0f
+ lda #1:sta $dd0c:rts
+ ;
+ therinit lda #$7f:sta $dd0d
+ lda #$ff:sta $dd04:sta $dd05
+ sta $dc06:sta $dc07
+ lda #%01000001:sta $dd0e
+ lda #0:sta deg1:jmp thpulse
+ ;
+ ;
+ ; temps affichage du logo
+ ;
+ ctf1 jsr nombre:bcs ctf1f
+ sta tlogo:ctf1f rts
+ ;
+ ;
+ ; imprimmer logo en diffusion
+ ;
+ jlogo lda tlogo:beq ctf1f:sta $401
+ lda fscroll:pha:lda #0:sta fscroll
+ jsr stitre:jsr logop:jsr ztime
+ lj1 jsr modemchk:jsr out:bcc lj1
+ jsr blank:jsr eftout
+ jsr gris:jsr ltitre:jsr pbas
+ jsr blank:pla:sta fscroll:rts
+ ;
+ ;
+ ; regler temps a zero
+ ;
+ ztime lda #0:sta $dd0a:sta $dd09
+ sta $dd08:rts
+ ;
+ ;
+ ; transfert de page
+ ;
+ cttr lda pno:pha
+ jsr nombreb:bcs cttr1
+ cmp toppage:bcs cttr1:sta pno
+ jsr rctm:and #16:bne cttr2:jsr to
+ cttr1 pla:sta pno:rts
+ cttr2 jsr erreur:beq cttr1
+ ;
+ ; stoquer page en memoire
+ ;
+ to ldx #destin:jsr tpos
+ sta source:stx source+1
+ lda $400:ora #$40:sta $400
+ lda #1:sta ypos
+ to2 jsr pcur:ldy #32
+ to3 lda (ligne),y:bne to1:dey
+ bne to3:inc ypos:lda ypos
+ cmp maxlig:bne to2
+ lda $400:eor #$40:sta $400
+ to1 jmp transfert
+ ;
+ ;
+ ; initialisation pour le scroll
+ ;
+ initscroll lda #1:sta ct10scr
+ lda #0:sta ligscr:sta colscr
+ sta pind:ldx toppage:dex:stx pno
+ insr1 jsr rctm:and #$4e
+ eor #$40:bne insr2:inc pind
+ lda pno:sta pagescr
+ insr2 dec pno:ldx express:dex:cpx pno
+ bne insr1:lda pind:sta fscroll:rts
+ ;
+ ; chercher prochaine page valide
+ ;
+ pageok lda #1:sta misa
+ pok0 lda pno:cmp express
+ bcc pok1:dec misa:bmi paspage
+ ldx #0:stx pno:jsr jlogo
+ pok1 jsr rctm:tax
+ ldy fprio:beq pok2:asl:bcc step
+ pok2 txa:and #$4e:eor #$40:bne step
+ jsr placepage:inc pno:rts
+ step inc pno:jsr stop:bne pok0
+ dec pno:jsr placepage:inc pno
+ pla:pla:jmp ctofin
+ ;
+ ;
+ ; quand aucune page ne peut passer => logo
+ ;
+ paspage lda #0:sta pno:jsr from:jsr logop
+ pasp1 jsr modemchk:jsr stop:beq paspstop
+ lda frh:beq pasp1:pla:pla:jmp cto ; essayer aux heures
+ paspstop jsr rpnoppage:pla:pla:rts
+ ;
+ ;
+ ; mise a jour
+ ;
+ ctmr rts
+ ctm jsr nombreb:bcs ctmr
+ cmp toppage:bcs ctmr:sta ligscr
+ jsr nombreb:bcs ctmr:cmp toppage:bcs ctmr
+ cmp ligscr:bcc ctmr:sta colscr:inc colscr
+ ;
+ jsr to:jsr chkall
+ lda ligscr:sta misa:sta misb
+ ctm1 lda misa:sta pno
+ jsr rctm:tax:and #$50
+ eor #$40:bne ctmstep:txa
+ and #$28:cmp #$28:beq ctmstep
+ ;
+ ctm2 lda misb:sta pno:jsr rctm
+ and #$10:beq ctm2b:inc misb:bne ctm2
+ ctm2b lda misa:sta pno
+ jsr from:lda misb:sta pno:jsr to
+ inc misb
+ ctmstep inc misa:lda misa
+ cmp colscr:bcc ctm1
+ lda misb:sta pno:jsr clr2
+ ctm3 lda pno:cmp colscr:bcs ctmfin
+ jsr rctm:and #$10:bne ctm4
+ jsr to:lda pno
+ ctm4 inc pno:bne ctm3
+ ctmfin lda ligscr:sta pno
+ jmp rpnoppage
+ ;
+ ;
+ ; diffusion apres panne courant
+ ;
+ panne jsr colda:jsr auto
+ jsr opdir:beq pan00:jmp panneb
+ pan00 ldx #8:jsr $ffc6:bcc pan00b:jmp panneb
+ pan00b jsr chrin:jsr chrin ; start adress
+ pan01 jsr chrin:jsr chrin ; link
+ jsr chrin:jsr chrin	   ; nb blocks
+ pan02 jsr chrin:tax:jsr $ffb7:beq pan02b:jmp panneb
+ pan02b txa:cmp #18:beq pan07:cmp #34:bne pan02
+ ldy #0:sty ypos:jsr efligne:ldy #8:sty xpos:ldy #0
+ pan03 jsr chrin:cmp #34:beq pan04
+ sta buffer,y:jsr pascii:iny:bne pan03
+ pan04 lda #13:sta buffer,y:dey:ldx #4
+ pan05 lda buffer,y:cmp #197:beq pan06 ; chercher E
+ cmp #32:bne pan07:dey:bpl pan05:bmi pan07
+ pan06 lda buffer,y:cmp pandat,x:bne pan07
+ dey:bmi pan07:dex:bpl pan06:bmi pan08
+ pan07 jsr chrin:cmp #0:bne pan07:beq pan01
+ ;
+ pan08 jsr close:lda #0:sta $dc08
+ sta bufpos:jsr ctl:bcs pannec
+ ;
+ notime lda #1:sta misa
+ jsr eftout:jsr aftitre
+ pan2 lda #255:sta pno
+ pan3 inc pno:lda pno:cmp express
+ bcc pan3b:lda misa:bne panneb
+ lda #0:sta pno
+ pan3b jsr rctm:and #$62
+ eor #$40:bne pan3
+ lda #0:sta misa:jsr placepage
+ pan4 jsr clign:jsr modemchk
+ jsr stop:bne pan5:jmp nmij
+ pan5 jsr out:bcc pan4:bcs pan3
+ panneb jsr close
+ pannec jsr logop
+ pan6 jsr modemchk:jsr stop
+ bne pan6:jmp nmij
+ pandat .asc "PANNE"
+
+;
+ try = ligscr: chksum = colscr ; variables inutilisees a ce moment
+;
+;
+menu .asc "1-Transmettre":.byte 13,13
+     .asc "2-Recevoir":.byte 13,13
+     .asc "3-Terminer communications":.byte 0
+;
+modeminit = *
+     .asc "atv0":.byte 13      ; codes retournes numeriquement
+     .asc "atx1":.byte 13      ; codes 1 a 5 acceptes
+     .asc "ats7=90":.byte 13
+     .asc "ats0=4":.byte 13
+     .asc "ate0":.byte 13,0
+;
+mdtmes .asc " Un instant S.V.P. ":.byte 0
+;
+modemdetect ldy #11:jsr efligney
+     lda #0:sta modemp:sta maitre:sta xpos:sta drivep
+     sta rspeed:jsr opdir:lda $90:pha:jsr close
+     pla:and #128:eor #128:sta drivep ; le drive est-t-il branche ?
+     jsr rsopen:bcs rsclose:ldy #0
+mdtmes1 lda mdtmes,y:beq mdtmes2
+     jsr pascii:iny:bne mdtmes1
+mdtmes2 lda #3:sta try
+
+mdt0 dec try:bmi mdt5
+     lda #90:sec:jsr atsend ; atz
+mdt1 jsr getrs:bcs mdt0
+mdt2 cmp #79:bne mdt1
+     jsr getrs:bcs mdt0
+     cmp #75:bne mdt2
+;
+     ldy #0
+mdta lda #10:sta try:sty chksum
+mdtb dec try:bmi mdt5:ldy chksum
+mdt3 lda modeminit,y:beq mdt4:iny
+     jsr putrs:cmp #13:bne mdt3
+mdtc jsr r13x13:bcs mdtb:bne mdtb:beq mdta
+mdt4 lda #1:sta modemp:jsr masterfichier
+mdt5 ldy #11:jsr efligney
+;
+;
+; fermer chanel rs232
+;
+rsclose jsr $ffcc:lda #2:jsr $ffc3
+     lda ddrb:and #%10010111:ora #%100:sta ddrb:rts
+;
+;
+; ouvrir rs232
+;
+rsbug tax:jsr phex:ldx $90:jsr phex
+ ldx #5:jsr pause:sec:rts
+;
+rsopen jsr rsclose
+     ldx #$c6:stx $f8:inx:stx $fa ; buffer $c600, $c700
+     lda #2:tax:tay:jsr $ffba	  ; setlf
+     ldx #<rsfnl:ldy #>rsfnl	  ; 300 bauds
+     lda rspeed:bne rs00
+     ldx #<rsfn:ldy #>rsfn	  ; 1200 bauds
+rs00 lda #4:jsr $ffbd
+     jsr $ffc0:bcc rs01:cmp #240:beq rs01:sec:rts
+rs01 lda ddrb:and #%10010111:ora #%100:sta ddrb
+;
+;
+; mettre rs232 comme device i/o
+;
+rsio jsr $ffcc:ldx #2:jsr $ffc9:bcs rsi1
+     ldx #2:jsr $ffc6:bcs rsi1:jsr $ffe4:clc
+rsi1 rts
+;
+rsfn  .byte 0,0,59,1 ; 1205 bauds
+rsfnl .byte 0,0,68,6 ; 300 bauds
+;
+;
+; lire code d'erreur du modem... cr,code,cr
+;
+r13x13 jsr getrs:bcs r13r
+     cmp #13:bne r13x13
+rx13 jsr getrs:bcs r13r
+rx14 sta acc:jsr getrs:bcs r13r
+     cmp #13:bne rx14:lda acc:sec:sbc #48:clc
+r13r rts
+;
+;
+; flusher buffer rs232
+;
+rsflush jsr getrs:bcc rsflush:rts
+;
+;
+; imprimmer la page et effacer ligne 0
+;
+ppagev jsr ppage:ldy #0:jmp efligney
+;
+; raccrocher le modem
+;
+raccroche lda #5:sta try
+rac0 dec try:bmi rac2
+     jsr rsopen:ldx #1:jsr pause
+     lda #43:jsr putrs:jsr putrs:jsr putrs
+     ldx #1:jsr pause:lda #72:sec:jsr atsend
+rac1 jsr getrs:bcs rac0
+     cmp #48:bne rac1:rts
+rac2 jsr modemdetect
+     lda modemp:bne raccroche
+rac3 rts
+;
+;
+; envoyer "at" puis le registre a au modem puis return
+;
+atsend php:pha:ldx #1:jsr pause
+     lda #65:jsr putrs:lda #84:jsr putrs
+     pla:jsr putrs:plp:bcc rac3
+     lda #13:jmp putrs
+;
+;
+; faire une pose de x secondes sans changer les registes a et y
+;
+pause pha:tya:pha:stx pr1
+     txa:asl:lsr pr1:clc:adc pr1 ; *2.5
+     ldx #0:ldy #0
+pau1 dex:bne pau1:dey:bne pau1
+     sec:sbc #1:bne pau1:pla:tay:pla:rts
+;
+;
+; recevoir octet sur rs232 c=1 => timout
+;
+getrs tya:pha:lda #0:sta pr1:lda #60:sta pr1+1
+rsg1 lda $2a1:and #1:bne rsg1 ; attendre fin de transmission
+     jsr $ffe4:tax:jsr $ffb7:and #8:bne rsg2
+     pla:tay:txa:clc:rts
+rsg2 dec pr1:bne rsg1:dec pr1+1:bne rsg1
+pla:tay:sec:rts ; timout
+;
+;
+; envoyer un octet sur rs232 avec petit delais
+;
+putrs pha:txa:pha:tya:pha
+     tsx:lda $103,x:jsr $ffd2
+     ldx #0:ldy #5:sei
+prs1 dex:bne prs1:dey:bne prs1
+     cli:pla:tay:pla:tax:pla:clc:rts
+;
+;
+; envoyer une commande et attendre acknoledge
+;
+rscommande tax:ora #$50:sta acc:jsr rsceor
+     cpx #2:bcs rscom2
+     lda misa:jsr rsceor
+rscom2 jsr getrs:bcs rscom3
+     eor #$ff:cmp acc:bne rscom2
+     jsr getrs:bcs rscom3:cmp acc:bne rscom2
+     jsr getrs:bcs rscom3:tay
+     jsr getrs:bcs rscom3:cpy #$5e:bne rscom3
+     cmp #$a1:bne rscom3:clc:rts
+rscom3 sec:rts
+;
+rsceor jsr putrs:eor #$ff:jmp putrs
+;
+;
+; envoyer le mot de passe de l'emeteur
+;
+callerpass ldx #4:jsr pause:ldy #0
+calp1 lda cpasse,y:beq calp2:iny:jsr putrs:jmp calp1
+     ldx #2:jsr pause ; attendre 2 secondes
+calp2 jsr getrs:bcs clap3:cmp rpasse:bne calp2
+     jsr getrs:bcs clap3:cmp rpasse+1:bne calp2
+     jsr getrs:bcs clap3:cmp rpasse+2:bne calp2
+     jsr rsflush:clc ; vider reste et terminer
+clap3 rts
+;
+cpasse .asc "dtxdtxdtxdtxdtx":.byte 0
+rpasse .asc "ouiouiouiouioui":.byte 0
+ ;
+ ;
+ .opt p:.opt n
+ ;
+ *= $ae70 ; zone ram et rom
+ ;
+ ; sauver ligne titre dans $c800
+ ;
+ ;
+ stitre ldx #0:jsr ram
+ st01 lda hgr,x:sta $c800,x
+ lda hgr+160,x:sta $c800+160,x
+ lda hgr+320,x:sta $c800+320,x
+ lda hgr+480,x:sta $c800+480,x
+ inx:cpx #160:bne st01:jmp rom
+ ;
+ ;
+ ; loader ligne titre de $c800
+ ;
+ ltitre ldx #0
+ lt01 lda $c800,x:sta hgr,x
+ lda $c800+160,x:sta hgr+160,x
+ lda $c800+320,x:sta hgr+320,x
+ lda $c800+480,x:sta hgr+480,x
+ inx:cpx #160:bne lt01:rts
+ ;
+ ;
+ ; transferer une zone memoire
+ ;
+ transfert ldy #0:lda source+1
+ cmp destin+1:bcc apres
+ bne avant:lda source
+ cmp destin:bcc apres
+ avant lda (source),y
+ sta (destin),y
+ jsr incsour:jsr incdest
+ tr02 jsr declong:bne avant:rts
+ apres lda source:clc:adc long
+ sta source:lda source+1
+ adc long+1:sta source+1
+ lda destin:clc:adc long
+ sta destin:lda destin+1
+ adc long+1:sta destin+1
+ capres dec source:lda source
+ cmp #$ff:bne tr03:dec source+1
+ tr03 dec destin:lda destin
+ cmp #$ff:bne tr04:dec destin+1
+ tr04 lda (source),y:sta (destin),y
+ jsr declong:bne capres:rts
+ ;
+ ;
+ ; remplir une zone memoire avec a
+ ;
+ fill0 lda #0
+ fill ldy #0:fill1 jsr stinc
+ jsr declong:bne fill1:rts
+ ;
+ ;
+ ; decrementer longueur (z=z)
+ ;
+ declong dec long:beq dc02
+ ldx long:cpx #$ff:bne dc01
+ dec long+1:ldx #1:dc01 rts
+ dc02 ldx long+1:rts
+ ;
+ ;
+ ; incrementer pointeur source
+ ;
+ incsour inc source:bne dc01
+ inc source+1:rts
+ ;
+ ;
+ ; incrementer pointeur destination
+ ;
+ incdest inc destin:bne dc01
+ inc destin+1:rts
+ ;
+ ;
+ ; decompresser data
+ ;
+ decomp ldy #0:lda (source),y
+ sta destin:jsr incld
+ sta destin+1
+ decomain jsr incld
+ cmp #$d9:beq dcomp
+ jsr stinc:jmp decomain
+ dcomp jsr incld:beq dc01
+ tax:jsr incld
+ etir jsr stinc:dex:bne etir
+ jmp decomain
+ ;
+ ;
+ ; incrementer source et charger a
+ ;
+ incld jsr incsour:lda (source),y:rts
+ ;
+ ;
+ ; stocker a et incrementer destin
+ ;
+ stinc sta (destin),y:jmp incdest
+ ;
+ ;
+ ; mult a par y resul dans 0,x
+ ;
+ mul sei:sta amul:sty ymul
+ lda #0:sta 0,x:sta 1,x:ldy #8
+ mu01 lsr amul:bcc mu02
+ lda ymul:clc:adc 1,x:sta 1,x
+ mu02 ror 1,x:ror 0,x:dey:bne mu01
+ cli:rts
+ ;
+ ;
+ ; imprimmer un caractere
+ ;
+ print sta acc:pha:txa:pha:tya:pha
+ lda acc:tax:and #128
+ sta soulig:txa:and #$7f
+ cmp #123:bcc prleg:lda #0:sta soulig
+ prleg sta acc
+ asl:adc acc:ldx #0:stx pr1+1
+ rol pr1+1:asl:rol pr1+1
+ asl:rol pr1+1;mul par 12
+ adc #<table
+ sta pr1:lda #>table
+ adc pr1+1:sta pr1+1
+ ldy #11:jsr ram;chercher le carac.
+ pr01 lda (pr1),y:sta car,y
+ dey:bpl pr01:jsr rom
+ ;calculer l'adresse hgr et phase
+ lda ypos:asl:asl:ldy #160
+ ldx #pr1:jsr mul
+ lda xpos:lsr:lsr:clc:adc xpos
+ ldy #0:sty pr2+1
+ asl:rol pr2+1:asl:rol pr2+1
+ asl:rol pr2+1:adc pr1
+ sta phgr:lda pr1+1
+ adc pr2+1:sta phgr+1
+ lda phgr:clc:adc #<(hgr+2):sta phgr
+ lda phgr+1:adc #>(hgr+2):sta phgr+1
+ lda xpos:and #3:asl:sta phase
+ lda centry:beq pr02
+ lda phgr:clc:adc #<320:sta phgr
+ lda phgr+1:adc #>320:sta phgr+1
+ pr02 lda centrx:beq pr05
+ lda double:bne pr03
+ lda phase:clc:adc #5:sta phase
+ cmp #8:bcc pr05:sbc #8:sta phase
+ lda phgr:clc:adc #8:sta phgr
+ bcc pr05:inc phgr+1:jmp pr05
+ pr03 lda #8:ldy phase:iny:iny
+ sty phase:cpy #8:bne pr04
+ ldy #0:sty phase:asl
+ pr04 clc:adc phgr:sta phgr
+ lda phgr+1:adc #0:sta phgr+1
+ pr05 lda double:beq pp:jmp prdoubl
+ ;
+ ;imprimmer largeur simple
+ ;
+ pp jsr prblk:jmp finprt
+ prblk ldx #12:pr06 lda car,x
+ sta tampona,x:lda #0
+ sta tamponb,x:dex:bpl pr06
+ write lda #0:sta tampona+12
+ lda soulig:beq wr01
+ lda #$ff:sta tampona+12
+ lda #192:sta tamponb+12
+ wr01 ldx #12:pr07 ldy phase
+ pr08 dey:bmi pr09
+ lsr tampona,x:ror tamponb,x
+ jmp pr08:pr09 dex:bpl pr07
+ lda soulig:beq px7:lda phase
+ cmp #1:bne px7:lda #255:sta tampona+12
+ px7 ldy #5:ldx phase:jsr ram
+ pr10 lda (phgr),y:and masque1,x
+ ora tampona,y:sta (phgr),y
+ dey:bpl pr10:ldy #8
+ pr11 lda (phgr),y:and masque2,x
+ ora tamponb-8,y:sta (phgr),y
+ iny:cpy #14:bne pr11
+ lda phgr:clc:adc #<318:sta phgr
+ lda phgr+1:adc #>318:sta phgr+1
+ ldy #6
+ pr12 lda (phgr),y:and masque1,x
+ ora tampona+6,y:sta (phgr),y
+ dey:bpl pr12:ldy #8
+ pr13 lda (phgr),y:and masque2,x
+ ora tamponb-2,y:sta (phgr),y
+ iny:cpy #15:bne pr13:jmp rom
+ masque1 .byte 0,128,$c0,$e0,$f0,$f8,$fc,$fe
+ masque2 .byte	$3f,$1f,$0f,7,3,1,0,0
+ ;
+ ; imprimmer en double
+ ;
+ prdoubl jsr clrtb
+ ldx #11:pd01 ldy #4
+ pd02 asl car,x:bcc pd03
+ sec:rol tampona,x
+ sec:rol tampona,x
+ jmp pd04
+ pd03 asl tampona,x:asl tampona,x
+ pd04 dey:bne pd02
+ lsr tampona,x:ror tamponb,x
+ lsr tampona,x:ror tamponb,x
+ dex:bpl pd01:jsr write:jsr clrtb
+ lda phgr:sec:sbc #<318:sta phgr
+ lda phgr+1:sbc #>318:sta phgr+1
+ lda #8:ldy phase:iny:iny
+ sty phase:cpy #8:bne pd08a
+ ldy #0:sty phase:asl
+ pd08a clc:adc phgr:sta phgr
+ lda phgr+1:adc #0:sta phgr+1
+ ldx #11:pd05 ldy #4
+ pd06 asl car,x:bcc pd07
+ sec:rol tampona,x
+ sec:rol tampona,x
+ jmp pd08
+ pd07 asl tampona,x:asl tampona,x
+ pd08 dey:bne pd06
+ dex:bpl pd05:jsr write:inc xpos
+ finprt inc xpos:lda xpos:cmp maxcol
+ bcs fp01:retour pla:tay:pla:tax:pla:rts
+ fp01 lda #0:sta xpos:jmp retour
+ clrtb ldx #12:lda #0
+ clb01 sta tamponb,x:dex:bpl clb01
+ rts
+ ;
+ ; switcher en ram
+ ;
+ ram lda 1:and #$fc:sta 1:rts
+ ;
+ ; switcher en rom
+ ;
+ rom lda 1:ora rommask:sta 1:rts
+ ;
+ ; routine irq
+ ;
+ irqram pha:txa:pha:tya:pha
+ ;
+ irq lda 1:sta $a0:jsr rom
+ lda #0:sta $dc0e:lda $dc0d
+ cld:inc $a2:bne swdrv:inc $a1
+ swdrv lda $a1:cmp #$60:bcc swdrv1
+ lda $a0:ora #32:sta $a0
+ swdrv1 lda fscroll:beq ir03
+ jsr scroll
+ ir03 jsr $ff9f:jsr $f6bc
+ lda $a2:and #7:tax:lda ngris,x:sta $d027
+ lda $dc0b:ldx $dc08:cmp rh:beq reti:ldx #6
+ ir04 dex:bmi ir05:cmp hcall,x:bne ir04
+ ldx #1:stx call
+ ir05 sta rh:inc frh:cmp #$12:bne reti
+ jsr datt0:lda #1:sta refresh
+ reti lda #1:sta $dc0e
+ lda $a0:sta 1:pla:tay:pla:tax:pla:rti
+ ;
+ ngris .byte 0,11,12,15,1,15,12,11
+ hcall .byte $12,4,8,$92,$84,$88
+ ;
+ ; scroll ligne titre de 1
+ ;
+ gscroll ldx #2:jsr ram
+ h = hgr+$138:j = h+320
+ scr1 clc:rol dscroll-2,x:rol h,x:rol h-8,x
+ rol h-16,x:rol h-24,x:rol h-32,x
+ rol h-40,x:rol h-48,x:rol h-56,x
+ rol h-64,x:rol h-72,x:rol h-80,x
+ rol h-88,x:rol h-96,x:rol h-104,x
+ rol h-112,x:rol h-120,x:rol h-128,x
+ rol h-136,x:rol h-144,x:rol h-152,x
+ rol h-160,x:rol h-168,x:rol h-176,x
+ rol h-184,x:rol h-192,x:rol h-200,x
+ rol h-208,x:rol h-216,x:rol h-224,x
+ rol h-232,x:rol h-240,x:rol h-248,x
+ rol h-256,x:rol h-264,x:rol h-272,x
+ rol h-280,x:rol h-288,x:rol h-296,x
+ rol h-304,x:rol h-312,x
+ inx:cpx #8:bne scr1:ldx #0
+ scr2 clc:rol dscroll+6,x:rol j,x:rol j-8,x
+ rol j-16,x:rol j-24,x:rol j-32,x
+ rol j-40,x:rol j-48,x:rol j-56,x
+ rol j-64,x:rol j-72,x:rol j-80,x
+ rol j-88,x:rol j-96,x:rol j-104,x
+ rol j-112,x:rol j-120,x:rol j-128,x
+ rol j-136,x:rol j-144,x:rol j-152,x
+ rol j-160,x:rol j-168,x:rol j-176,x
+ rol j-184,x:rol j-192,x:rol j-200,x
+ rol j-208,x:rol j-216,x:rol j-224,x
+ rol j-232,x:rol j-240,x:rol j-248,x
+ rol j-256,x:rol j-264,x:rol j-272,x
+ rol j-280,x:rol j-288,x:rol j-296,x
+ rol j-304,x:rol j-312,x
+ inx:cpx #6:bne scr2:jmp rom
+ ;
+ ; chercher page
+ ;
+ from ldx #source:jsr tpos
+ sta destin:stx destin+1
+ jsr ram:jsr transfert:jmp rom
+ ;
+ ; preparet transfert page
+ ;
+ tpos lda pno:asl:ldy #216:jsr mul
+ lda 0,x:clc:adc #<1456:sta 0,x
+ lda 1,x:adc #>1456:sta 1,x
+ lda #<432:sta long:lda #>432
+ sta long+1:lda #0:ldx #4:rts
+ ;
+ ;
+ ; routine nmi
+ ;
+ nmi sei:pha:txa:pha:tya:pha:lda 1:pha
+ lda 1:ora rommask:sta 1:lda #$7f:sta $dd0d
+ ldy $dd0d:bpl nm1
+ nm lda #>rint:pha:lda #<rint:pha:php
+ pha:pha:pha:jmp $fe72
+ rint pla:sta 1:pla:tay:pla:tax:pla:rti
+ nm1 jsr $f6bc:jsr $ffe1:bne nm
+ jmp nmij
+ ;
+ ;
+ ; afficher le logo
+ ;
+ logop jsr blank:jsr aftitre
+ jsr incsour:jsr ram:jsr decomp
+ jsr incsour:jsr decomp:lda $da3b:pha
+ jsr rom:pla:sta $d020:jmp blank
+ logo jsr logop
+ f11 jsr modemchk:jsr stop:bne f11:rts
+ ;
+ f1 jsr logo:jsr pnoppage:ldx #11
+ stx ypos:jsr normal:jmp efligne
+ ;
+ ;
+ ; chercher page par titre
+ ;
+ ctptitre lda pno:sta lng
+ lda #0:sta pno:jsr fillb:ldy #25
+ ctpa lda buffer,y:jsr convert
+ and #$7f:sta buffer,y:dey:bpl ctpa
+ ctp1 ldx #source:jsr rom:jsr tpos
+ ldy #18:ldx #9:jsr ram
+ ctp2 lda buffer,x:cmp (source),y
+ bne ctp3:dey:dex:bpl ctp2
+ jsr rom:lda pno:pha:lda lng:sta pno
+ jsr to:pla:sta pno:jmp rpnoppage
+ ctp3 inc pno:lda pno:cmp toppage
+ bne ctp1:lda lng:sta pno:jmp rom
+ ;
+ ;
+ ; loader un nouveau titre/logo
+ ;
+ ctllogo ldy 147:bne ctl4:jsr to
+ jsr fillb:jsr motoron:ldy #0:jsr setname:jsr blank
+ lda #0:ldx #<hgr:stx source:ldy #>hgr:sty source+1
+ jsr $ffd5:bcs bad+3:jsr ram:lda hgr+1:pha
+ jsr rom:pla:cmp #$e0:bne bad:lda #0
+ sta destin:sta long:lda #$d0
+ sta destin+1:lda #$10:sta long+1
+ jsr ram:jsr transfert:jsr rom
+ jsr blank:jsr drvmess:jmp f1
+ bad jsr erreur:jsr eftout:jsr drvmess
+ jsr rpnoppage:jsr blank:sec
+ ctl4 rts
+ ;
+ ;
+ ; index des 100 pages
+ ;
+ ctat jsr to:jsr gris:lda pno
+ sta firstl:jsr chkall
+ jsr normal:ldy #0:sty pno:sty lng
+ at0 lda #1:sta ypos
+ at1 jsr pheure:lda lng:sta xpos:ldx pno
+ jsr phex:pha:ldx #pind:jsr tpos
+ ldy #0:jsr ram:lda (pind),y
+ pha:jsr rom:pla:jsr petat
+ ldy #9:at2 jsr ram:lda (pind),y
+ jsr print:iny:cpy #$13:bne at2
+ inc pno:lda pno:cmp toppage:bne at2b
+ lda #0:sta pno:at2b inc ypos:pla
+ cmp #$19:bne at1:lda lng:bne at3
+ lda #16:sta lng:bne at0
+ at3 lda #0:sta lng
+ at4 jsr pheure:jsr $ffe4:cmp #13:beq at5
+ cmp #145:bne at3a
+ lda pno:sec:sbc #40:sta pno:bpl at0
+ clc:adc toppage:sta pno:jmp at0
+ at3a cmp #17:bne at4
+ lda pno:cmp toppage:bne at0
+ lda #0:sta pno:jmp at0
+ at5 lda firstl:sta pno:jmp rpnoppage
+ ;
+ ;
+ ; afficher le titre
+ ;
+ aftitre lda #0:sta source
+ lda #$d0:sta source+1:jsr ram
+ jsr decomp:jmp rom
+ ;
+ ;
+ ; verifier programmation des pages
+ ;
+ chkall lda #0:sta pno:sta fprio
+ cka1 clc:jsr chkpage:inc pno
+ lda pno:cmp express:beq ckka2:cmp toppage
+ bne cka1:pla:sta fprio:rts
+ ckka2 lda fprio:pha:jmp cka1
+ ;
+ chkpage bcs ck400:ldx #source:jsr tpos:jmp dirmd
+ ck400 lda #0
+ sta source:lda #4:sta source+1
+ dirmd jsr ram:ldy #0:lda (source),y:tax
+ and #$62:eor #$60:bne cka6:txa
+ and #$f3:sta (source),y:ldy #4
+ lda (source),y:bne cka2:iny:ldx #0
+ lda (source),y:cmp jour:beq cka1b
+ ldx #4:cka1b txa:jmp cka5
+ cka2 ldy #2
+ cka3 lda (source),y:sta buffer-2,y
+ iny:cpy #6:bne cka3:jsr depasse
+ bcs cka4:lda #4:bne cka5
+ cka4 ldy #7:lda (source),y:sta buffer+3
+ dey:lda (source),y:sta buffer+2
+ cmp #$99:beq cka6
+ dey:dey:cmp (source),y
+ bcs meme:lda buffer+1:sed
+ clc:adc #1:cld:sta buffer+1
+ cmp #$13:bne meme:lda #1
+ sta buffer+1:lda buffer:sed:clc
+ adc #1:sta buffer:cld
+ meme jsr depasse:bcc cka6:lda #8
+ cka5 ldy #0:ora (source),y
+ sta (source),y
+ cka6 ldy #0:lda (source),y
+ and #$ae:cmp #$a0:bne cka6b:sta fprio
+ cka6b jmp rom
+ ;
+ depasse ldx #0:jsr rom
+ dep1 lda an,x:cmp buffer,x
+ bcc dep2:bne dep2:inx:cpx #3:bne dep1
+ jsr h24:cmp buffer+3
+ dep2 php:jsr ram:plp:rts
+ ;
+ ;
+ ; routine de scroll
+ ;
+ scroll dec ct10scr:beq sc1:jmp gscroll
+ sc1 lda #11:sta ct10scr:jsr scrpos
+ lda ligscr:ldy #33:ldx #cari
+ jsr mul:lda cari:clc:adc adrscr
+ sta cari:lda cari+1:adc adrscr+1
+ sta cari+1:lda #$67:clc:adc colscr
+ tay:jsr ram:lda (cari),y:pha:jsr rom
+ pla:and #$7f:ldy #12:ldx #cari
+ jsr mul:lda cari:clc:adc #<table
+ sta cari:lda cari+1:adc #>table
+ sta cari+1:jsr ram:ldy #11
+ sc7 lda (cari),y:sta dscroll,y
+ dey:bpl sc7:jsr rom:inc colscr
+ lda colscr:cmp #32:bne scfin:lda #0
+ sta colscr:inc ligscr:lda ligscr
+ cmp #10:bne scfin:lda #0
+ sta ligscr:jsr ram
+ sc8 inc pagescr
+ lda pagescr:cmp toppage:bne sc9
+ lda express:sta pagescr
+ sc9 jsr scrpos:ldy #0
+ lda (adrscr),y:and #$4e:eor #$40
+ bne sc8
+ scfin jmp gscroll
+ ;
+ ; positionner page irq
+ ;
+ scrpos lda pagescr:asl:ldy #216
+ ldx #adrscr:jsr mul
+ lda adrscr:clc:adc #<1456
+ sta adrscr:lda adrscr+1:adc #>1456
+ sta adrscr+1:rts
+ ;
+ ;
+ ; lire sous la rom a source,0
+ ;
+ rctm ldx #source:jsr tpos:jsr ram
+ ldy #0:lda (source),y:pha:jsr rom
+ pla:rts
+ ;
+ ; routine pour sauver sous la rom
+ ;
+ save stx $ae:sty $af:tax
+ lda 0,x:sta $c1:lda 1,x:sta $c2
+ lda #$61:sta $b9:ldy $b7
+ jsr $f3d5:lda $ba
+ jsr $ed0c:lda $b9:jsr $edb9
+ ldy #0:jsr $fb8e:lda $ac:jsr $eddd
+ lda $ad:jsr $eddd:sav1 jsr $fcd1
+ bcs saverror:jsr ram:lda ($ac),y
+ pha:jsr rom:pla:jsr $eddd
+ jsr $ffe1:bne sav2:jsr $f642
+ lda #0:sec:rts
+ sav2 jsr $fcdb:bne sav1
+ saverror jmp $f63f
+ ;
+ ;
+ ; loader sous la rom (verify)
+ ;
+ loader stx $c3:sty $c4
+ lda #0:sta $90:ldx $b9:lda #$60:sta $b9:jsr $f3d5
+ lda $ba:jsr $ed09:lda $b9:jsr $edc7
+ jsr $ee13:sta $ae:lda $90:lsr:lsr
+ bcs ld06:jsr $ee13:sta $af:txa
+ bne ld01:lda $c3:sta $ae:lda $c4:sta $af
+ ld01 lda #$fd:and $90:sta $90
+ jsr $ffe1:bne ld02:jmp $f633
+ ld02 jsr $ee13:tax:lda $90:lsr:lsr
+ bcs ld06:txa:ldy $93:beq ld03
+ ldy #0:jsr ram:txa:cmp ($ae),y
+ php:jsr rom:plp:beq ld04:lda #$10
+ jsr $fe1c:.byte $2c
+ ld03 sta ($ae),y
+ ld04 inc $ae:bne ld05:inc $af
+ ld05 lda $ae:cmp #$70:bne ld05a
+ lda $af:cmp #$ae:beq ld05b
+ ld05a bit $90:bvc ld01
+ ld05b jmp $f528
+ ld06 sec:rts
+ ;
+ ;
+ ;  imprimmer l'index des pages sur imprimmante
+ ;
+ ctjfin rts
+ ctj jsr nombreb:bcs ctjfin
+ cmp toppage:bcs ctjfin:sta misa
+ jsr nombreb:bcs ctjfin
+ cmp misa:bcc ctjfin
+ cmp toppage:bcs ctjfin:sta misb
+ lda pno:pha:jsr to:jsr chkall
+ lda #8:ldx #4:ldy #0:jsr $ffba ; mettre 4
+ lda #0:jsr $ffbd:jsr $ffc0:bcs ctjret
+ ldx #8:jsr $ffc9:bcc ctj0
+ ctjret jsr close:pla:sta pno:rts
+ ctj0 lda misa:sta pno:lda #13
+ jsr $ffd2:bcc ctj1b:jmp ctjret
+ ctj1 lda #13:jsr $ffd2:ldy #16
+ ctj1b jsr pspace:dey:bne ctj1b
+ ldx pno:jsr lphex
+ jsr rctm:ldy #32:pha:tax:and #8:beq jeta1
+ ldy #80:jeta1 txa:and #4:beq jeta2
+ ldy #65:jeta2 txa:and #2:beq jeta3
+ ldy #42:jeta3 txa:and #64:bne jeta3b
+ ldy #46:jeta3b tya:jsr $ffd2
+ ldy #0:txa:and #16:beq jeta4:iny
+ jeta4 txa:and #128:beq jeta5:iny:iny
+ jeta5 lda jptd,y:jsr $ffd2
+ jsr pspace:ldy #9:jsr ram
+ ctj3 lda (source),y:pha:jsr rom:pla
+ jsr pcode:iny:cpy #$13:bne ctj3
+ jsr pspace: jsr pspace:pla:and #%101100:beq ctj4
+ ldy #2:jsr pslash:jsr pslash
+ jsr pjrhr:jsr pspace:lda #45:jsr $ffd2
+ jsr pspace:jsr pjrhr
+ ctj4 lda pno:cmp misb:bne ctj5
+ lda #13:jsr $ffd2:jmp ctjret
+ ctj5 inc pno:jmp ctj1
+ jptd .byte 32,45,58,37
+ ;
+ pspace lda #32:pspc1 jmp $ffd2
+ pslash jsr aphex:lda #47:bne pspc1
+ pjrhr jsr aphex:lda #58:jsr $ffd2
+ jsr aphex:lda #72:bne pspc1
+ ;
+ pcode jsr ccode:jmp $ffd2
+ ccode cmp #33:bcs pc1:clc:adc #32:bne pc5
+ pc1 cmp #64:bcs pc2:clc:adc #32:bne pc5
+ pc2 bne pc4:pc3 lda #32:bne pc5
+ pc4 cmp #97:bcc pc3:cmp #123:bcs pc3
+ sec:sbc #32
+ pc5 rts
+ ;
+ aphex jsr ram:lda (source),y:pha
+ jsr rom:pla:iny:bne lph1
+ lphex jsr jphex
+ lph1 pha:lsr:lsr:lsr:lsr:ora #48:jsr $ffd2
+ pla:and #15:ora #48:jmp $ffd2
+ ;
+ ;
+ ; communication etablie a la main...
+ ;
+ctz9 lda #66:jsr putrs:jsr putrs ; quitter si pas de mot de passe
+ctz0 jmp ctzq
+ctz  lda modemp:bne ctz1:rts
+ctz1 jsr to:jsr get:ldy #0	       ; supposer 1200 bauds
+     cmp #38:bne ctz1a:iny:bne ctz1b   ; & = 300 bauds
+ctz1a dec bufpos
+ctz1b sty rspeed:jsr rsopen:bcs ctz0
+ctz2 lda #68:clc:jsr atsend ; atd
+ctz3 jsr get:jsr putrs:cmp #13:bne ctz3
+ctz4 ldx 197:cpx #64:bne ctz9
+     lda prb:and #$10:beq ctz4a  ; carrier detect
+     jsr getrs:cmp #53:beq ctz4a ; connect 1200
+     cmp #51:beq ctz0:cmp #49:bne ctz4
+ctz4a jsr callerpass:bcs ctzq:jsr to
+ctz4b jsr $ffcc
+     jsr clr2:jsr ppagev:lda #3:sta ypos:ldy #0
+ctz5 ldx #3:stx xpos
+ctz6 lda menu,y:beq ctz8:iny
+     cmp #13:bne ctz7:inc ypos:bne ctz5
+ctz7 jsr pascii:jmp ctz6
+ctz8 lda prb:and #16:bne ctzq:jsr pheure
+     jsr $ffe4:cmp #49:beq ctztrans
+     cmp #50:beq ctzreceve:cmp #51:bne ctz8
+ctzq jsr ppagev
+     jsr raccroche:lda #0:sta pno
+     jsr rsclose:jmp rpnoppage
+;
+ctztrans jsr ppagev
+     ldx #xtrans:jsr trchk:bcs ctz4b
+     jsr trheure
+ctjtr1 lda misa:jsr sendpage:bcs ctz4b
+     inc misa:lda misa:cmp misb:bcc ctjtr1:bcs ctz4b
+;
+ctzreceve jsr ppagev:ldx #xrecev:jsr trchk:bcs ctz4b
+ctzr1 lda misa:jsr recevepage:bcs ctz4b
+     inc misa:lda misa:cmp misb:bcc ctzr1:jmp ctz4b
+;
+trchk stx comm:jsr input
+     jsr nombreb:bcs trchk1:cmp toppage:bcs trchk1
+     sta misa:jsr nombreb:bcs trchk1:cmp toppage
+     bcs trchk1:cmp misa:bcc trchk1
+     sta misb:inc misb:jmp rsio
+trchk1 sec:rts
+;
+;
+; envoyer la page misa
+;
+sendpage lda #nbtry:sta try ; nombre d'essaies
+spg0 lda #0:jsr rscommande:bcs spg9
+     jsr senddata:bcs spg9
+     jsr inchksum:bcc spg7+1
+spg9 inc $d020:ldx #1:jsr pause
+     dec try:bpl spg0
+spg7 sec:rts
+;
+senddata lda $5b0:pha:lda misa:sta pno:jsr xpno
+     ldy #0:sty chksum
+      ; forcer l'arret a la fin
+     jsr rctm
+     and #%01000000:bne spg1
+     jsr chksend:jsr chksend:jmp spgsum
+spg1 jsr from:lda $5af:eor #$ff:sta $5b0
+     lda #4:sta source+1:lda #0:sta source
+spg2 ldy #0:lda (source),y
+spg3 iny:cmp (source),y:bne spg4:cpy #255:bcc spg3
+spg4 cpy #4:bcs spg5:cmp #$d9:beq spg5
+     ldy #1:bne spg6
+spg5 pha:lda #$d9:jsr chksend
+     tya:jsr chksend:pla
+spg6 jsr chksend:tya:clc:adc source
+     sta source:bcc spg6b:inc source+1
+spg6b lda source+1:cmp #5:bcc spg2:bne spgsum
+     lda source:cmp #$b0:bcc spg2
+spgsum pla:sta $5b0:clc:rts
+;
+chksend jsr putrs:clc:adc chksum:sta chksum:rts
+;
+;
+; demander la page misa
+;
+recevepage lda #nbtry:sta try ; nombre d'essaies
+rpg0 lda #1:jsr rscommande:bcs rpg00
+     jsr recevedata:bcs rpg00
+     jsr inchksum:bcc rpg01+1
+rpg00 inc $d020:ldx #1:jsr pause
+     dec try:bpl rpg0
+     jsr clr2:jsr to
+rpg01 sec:rts
+;
+inchksum jsr getrs:bcs rpg01:cmp chksum:bne rpg01:clc:rts
+;
+recevedata lda misa:sta pno:jsr xpno
+     lda #0:sta chksum:sta destin
+     lda #4:sta destin+1
+     jsr chkrec:bcs rpg01:cmp #0:bne rpg2b
+     jsr clr2:jmp rpgsum
+rpg2 jsr chkrec:bcs rpg01
+rpg2b cmp #$d9:beq rpg3:ldy #1:bne rpg3b
+rpg3 jsr chkrec:bcs rpg01
+     tay:jsr chkrec:bcs rpg01
+rpg3b sty source:tax
+rpg4 ldy #0:txa:sta (destin),y
+     jsr incdest:lda destin:cmp #$b0:bne rpg5
+     lda destin+1:cmp #5:beq rpgsum
+rpg5 dec source:bne rpg4:beq rpg2
+rpgsum jsr to:clc:rts
+;
+chkrec jsr getrs:bcs chkr1:pha
+     clc:adc chksum:sta chksum:pla:clc
+chkr1 rts
+;
+;
+; transmettre l'heure
+;
+trheure lda hrdisp:beq chkr1
+      lda #5:sta try ; nombre d'essaies
+trhr0 lda #4:jsr rscommande:bcs trhr3
+      jsr writetime:jsr inchksum:bcc chkr1
+trhr3 dec try:bpl trhr0 ; autres essaies
+rscs  sec:rts
+;
+writetime ldx #0:stx chksum:lda tlogo:jsr chksend
+trhr1 lda an,x:jsr chksend:inx:cpx #4:bne trhr1
+      lda $dc0b:tax:and #127:cmp #$12:bne trhr1b
+      txa:eor #$80:tax
+trhr1b txa:jsr chksend:ldx #2
+trhr2 lda $dc08,x:jsr chksend:dex:bpl trhr2
+      rts
+;
+;
+; lire l'heure du modem
+;
+readtime ldy #0:sty chksum:sta $dc0e
+     jsr chkrec:bcs gethr:sta tlogo
+geth1 jsr chkrec:bcs gethr
+     sta an,y:iny:cpy #4:bcc geth1
+geth2 jsr chkrec:bcs gethr
+     sta $dc07,y:dey:bne geth2
+     ldy #1:sty hrdisp:dey:sty fgenerique
+gethr lda $dc0b:sta rh
+      lda #1:sta $dc0e:rts
+;
+;
+;
+; tester le mode reponse sans sonnerie
+;
+answtest lda 653:tax:cmp #5:bcc answt4	; shift ctrl => repondre
+     ldy #0:sty rspeed
+     jsr rsopen:bcs answt2
+     lda #65:sec:jsr atsend ; ata
+     lda 653:and #2:beq answt2
+     lda #$81:sta refresh   ; C= => accepter data
+answt2 jsr rsclose
+answt3 lda 653:bne answt3
+answt4 rts
+;
+;
+; repondre a un appel telephonique
+;
+answer lda modemp:bne answ2
+answ1 rts
+answ2 jsr answtest
+     lda prb:tax:and #16:bne answ1 ; carrier detect
+     lda prb:and #32:sta rspeed    ; vitesse detectee
+     lda #0:sta fscroll:jsr logop:lda #5:sta try
+answ2b dec try:bpl answ2c:jmp answquit
+answ2c jsr rsopen:bcs answ2b
+answ3 jsr getrs:bcs answ2b
+     cmp cpasse:bne answ3 ; mot de passe
+     jsr getrs:bcs answquit:cmp cpasse+1:bne answ3
+     jsr getrs:bcs answquit:cmp cpasse+2:bne answ3
+     ldx #1:jsr pause:ldy #0
+answ4 lda rpasse,y:beq answ5:jsr putrs:iny:bne answ4
+answ5 jsr rsflush:lda pno:sta pagescr
+;
+ansmain lda prb:and #16:bne answquit
+     jsr getrs:bcs ansmain:tax
+ansm1 txa:sta acc:and #$f0:cmp #$50:bne ansmain
+     jsr getrs:bcs ansmain:tax
+     eor #$ff:cmp acc:bne ansm1
+     lda acc:and #15:cmp #2:bcs answ6
+     jsr getrs:bcs ansmain:sta misa
+     jsr getrs:bcs ansmain:eor #$ff
+     cmp misa:bne ansmain:beq answ6
+;
+answquit jsr raccroche:jsr rsclose
+     sei:ldx #$ff:txs:cli
+ansq1 lda pagescr:sta pno:jsr from
+     jsr cto:jmp edit
+;
+answ6 lda acc:eor #$ff:jsr rsceor ; acknoledge
+     lda acc:and #15:tax:dex:bpl answ7
+;
+; recevoir une page du maitre
+;
+     lda misa:cmp toppage:bcs norefresh
+     lda #0:sta refresh ; plus besoin de pages
+     jsr sendyes:jsr recevedata:jmp outchksum
+;
+answ7 dex:bpl answ8
+;
+; envoyer la page demandee par le controleur
+;
+     lda misa:cmp toppage:bcs norefresh
+     jsr sendyes:jsr senddata:jmp outchksum
+;
+answ8 dex:bpl answ9
+;
+; indiquer si on a besoin d'un backup
+;
+     lda refresh:and #$7f:beq norefresh
+     jsr sendyes:jmp ansmain
+norefresh lda #$5f:jsr rsceor:jmp ansmain
+;
+sendyes lda #$5e:jmp rsceor
+;
+answ9 dex:bpl answ10
+;
+; on nous demande l'heure
+;
+       lda hrdisp:beq norefresh
+       jsr sendyes:jsr writetime:jmp outchksum
+;
+answ10 dex:bpl answ11
+;
+; reception de l'heure
+;
+     jsr sendyes:jsr readtime
+outchksum lda chksum:jsr putrs
+;
+answ11 jmp ansmain
+;
+;
+modemsave ldx #16:lda modemp:bne mds1:rts
+     mds1 dex:bmi mstf1
+     lda buffer,x:cmp modemnam,x
+     beq mds1:rts
+;
+;
+; charger le fichier du maitre s'il y a lieu
+;
+mfbuffer = $c500
+modemnam .asc "0 MODEM	       "
+masterfichier lda #8:tax:ldy #0:jsr $ffba
+     lda #16:ldx #<modemnam:ldy #>modemnam:jsr $ffbd
+     lda #0:ldx #0:ldy #4:jsr $ffd5 ; load
+     jsr drvmess:bcc mstf1:jmp from
+;
+mstfq ldx mfbuffer:inx:stx maitre:jmp from
+mstf1 lda #0:sta ypos:sta pr1
+mstf2 inc ypos:jsr pcur:ldx pr1:ldy #4:lda #$ff
+mstf3 sta mfbuffer,x:inx:dey:bne mstf3 ; supposer rien de bon
+     lda ypos:cmp #11:beq mstfq:ldy #1:lda (ligne),y
+     sta mfbuffer,x:inx:cmp #11:beq mstf4:cmp #13:bne mstf2
+mstf4 cpy #32:bcs mstf2:iny:lda (ligne),y:beq mstf4
+     cmp #13:beq mstf4:cmp #8:beq mstf4:cmp #9:beq mstf4
+     cmp #26:beq mstfn
+     jsr ccode:sta mfbuffer,x:inx:bne mstf4
+mstfn lda #13:sta mfbuffer,x:ldx pr1
+mstf5 lda #0:sta mem1
+mstf6 cpy #32:bcs mstf7:iny:lda (ligne),y:beq mstf6
+     cmp #12:beq mstf7:cmp #27:beq mstf7
+     pha:lda mem1:asl:asl:asl:asl mem1	; mem1*10+a
+     clc:adc mem1:sta mem1:pla:and #15
+     clc:adc mem1:sta mem1:jmp mstf6
+mstf7 lda mem1:cmp toppage:bcs mstf8; trop gros...
+     sta mfbuffer,x:inx:cpy #32:bcc mstf5
+;
+     txa:and #7:cmp #5:bcs mstf8 ; plus de 4 no page=>erreur
+     lsr:bcs mstf8 ; nombre impair de no page => erreur
+     lda pr1:clc:adc #24:sta pr1
+mstf8 jmp mstf2
+;
+;
+; appeler les esclaves...
+;
+;
+modemchk jsr answer
+mastercall lda modemp:bne mcr1
+mcr0 rts
+mcr1 lda maitre:beq mcr0
+     lda call:bne mcr1b
+     lda refresh:bmi mcr0:beq mcr0
+;     
+mcr1b lda #0:sta fscroll:sta adrscr
+     lda pno:sta pagescr
+     jsr logop:jsr rsopen:bcs mcrq
+mcr2 ldy adrscr:lda mfbuffer,y:cmp #$ff:beq mcrq
+     lda mfbuffer+1,y:cmp #$ff:beq mcrq
+     lda #4:sta cari
+     ;
+     lda mfbuffer+4,y:sta deg1:tax
+     cpx #13:bne mcra
+     lda #30:sta cari ; insister si "-"
+mcra lda hrdisp:beq mcr3 ; appeler les "-" aux 4 heures si
+     lda refresh:bmi mcr2b ; on a pas l'heure
+     and #$7f:bne mcr3
+mcr2b cpx #11:bne mcr3a
+     ;
+mcr3  dec cari:bpl mcr3b
+mcr3a jmp mct5
+mcrq lda refresh:ora #$80:sta refresh
+     lda #0:sta call:jmp answquit
+mcr3b lda #0:sta rspeed:ldy adrscr
+     lda mfbuffer+5,y:cmp #38:bne mcr3c:inc rspeed:iny
+mcr3c tya:pha:jsr rsopen
+     lda #68:clc:jsr atsend ; atd
+     pla:tay
+mcr4 iny:lda mfbuffer+4,y:jsr putrs:cmp #13:bne mcr4
+     lda #0:sta $a1:sta $a2
+mcr5 lda $a1:cmp #30:bcs mcr6
+     lda 197:cmp #64:bne mcrq	    ; space = quit
+     lda prb:and #16:beq mcrtrans
+     jsr rx13:bcs mcr5:cmp #5:beq mcrtrans ; connect 1200
+     cmp #1:beq mcrtrans		   ; 300 bauds
+     cmp #3:bne mcr5			   ; no carrier
+mcr6 jsr raccroche:jmp mcr3
+mcrnext lda adrscr:clc:adc #24:jmp mcr2
+mcrtrans jsr callerpass:bcs mcr6
+     lda deg1:cmp #13:beq mct1a
+     jsr trheure:lda #5:sta try
+mct1 dec try:bmi mct4
+     lda #2:jsr rscommande
+     bcs mct1:bcc mct1b ; a-t-il a besoin de pages
+;
+mct1a lda #3:sta try ; demander l'heure
+mct1aa dec try:bmi mct1b:lda #3
+     jsr rscommande:bcs mct1aa
+     jsr readtime:jsr inchksum:bcs mct1aa
+;
+mct1b ldy adrscr:lda mfbuffer,y:sta misa
+     lda mfbuffer+1,y:sta misb:inc misb
+mct2 jsr dotrans:bcs mct4:inc misa
+     lda misa:cmp misb:bcc mct2
+     ldy adrscr:lda mfbuffer+2,y
+     cpy #$ff:beq mct4:sta misa
+     lda mfbuffer+3,y:cmp #$ff:beq mct4:sta misb:inc misb
+mct3 jsr dotrans:bcs mct4:inc misa:lda misa:cmp misb:bcc mct3
+mct4 jsr raccroche
+mct5 lda adrscr:clc:adc #24:sta adrscr:jmp mcr2
+;
+dotrans lda deg1:cmp #13:beq dot1:jmp sendpage
+dot1	jmp recevepage
+;
+;
+xpno ldy #0:sty xpos
+jsr efligney:ldx pno:jmp phex
+;
+;
+;
+.end
